@@ -1,7 +1,9 @@
 package me.huidoudour.file.manager.ui.component
 
+import android.content.Context
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,8 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -34,43 +38,41 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.ImageLoader
+import coil.compose.AsyncImage
+import coil.decode.VideoFrameDecoder
+import coil.request.ImageRequest
 import me.huidoudour.file.manager.model.FileItem
 import me.huidoudour.file.manager.util.FileCategory
 import me.huidoudour.file.manager.util.FileTypeUtil
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
+import java.io.File
 
-/** 文件图标背景色（类似质感文件的色调） */
-private fun iconBackgroundColor(category: FileCategory): Color = when (category) {
-    FileCategory.FOLDER -> Color(0xFFFFCC02).copy(alpha = 0.18f)    // 黄色
-    FileCategory.IMAGE -> Color(0xFF4CAF50).copy(alpha = 0.18f)     // 绿色
-    FileCategory.VIDEO -> Color(0xFFF44336).copy(alpha = 0.18f)     // 红色
-    FileCategory.AUDIO -> Color(0xFFFF9800).copy(alpha = 0.18f)     // 橙色
-    FileCategory.DOCUMENT -> Color(0xFF2196F3).copy(alpha = 0.18f)  // 蓝色
-    FileCategory.PDF -> Color(0xFFE91E63).copy(alpha = 0.18f)       // 粉色
-    FileCategory.ARCHIVE -> Color(0xFF795548).copy(alpha = 0.18f)   // 棕色
-    FileCategory.CODE -> Color(0xFF00BCD4).copy(alpha = 0.18f)      // 青色
-    FileCategory.APK -> Color(0xFF9C27B0).copy(alpha = 0.18f)       // 紫色
-    FileCategory.OTHER -> Color(0xFF607D8B).copy(alpha = 0.18f)     // 灰色
+// =============================================================================
+//  MT 风格 — 简洁图标 + 灰度配色
+// =============================================================================
+
+/** 缩略图 ImageLoader 单例 (支持视频帧) */
+private object ThumbnailLoader {
+    @Volatile
+    private var instance: ImageLoader? = null
+
+    fun get(context: Context): ImageLoader =
+        instance ?: synchronized(this) {
+            instance ?: ImageLoader.Builder(context.applicationContext)
+                .components { add(VideoFrameDecoder.Factory()) }
+                .crossfade(false)
+                .build()
+                .also { instance = it }
+        }
 }
 
-/** 文件图标前景色 */
-private fun iconTintColor(category: FileCategory): Color = when (category) {
-    FileCategory.FOLDER -> Color(0xFFF9A825)
-    FileCategory.IMAGE -> Color(0xFF4CAF50)
-    FileCategory.VIDEO -> Color(0xFFF44336)
-    FileCategory.AUDIO -> Color(0xFFFF9800)
-    FileCategory.DOCUMENT -> Color(0xFF2196F3)
-    FileCategory.PDF -> Color(0xFFE91E63)
-    FileCategory.ARCHIVE -> Color(0xFF795548)
-    FileCategory.CODE -> Color(0xFF00BCD4)
-    FileCategory.APK -> Color(0xFF9C27B0)
-    FileCategory.OTHER -> Color(0xFF607D8B)
-}
-
-/** 文件图标 */
+/** 文件图标 (MT 风格: 文件夹暖黄, 其他统一灰色) */
 private fun fileIcon(category: FileCategory): ImageVector = when (category) {
     FileCategory.FOLDER -> Icons.Filled.Folder
     FileCategory.IMAGE -> Icons.Filled.Image
@@ -84,109 +86,146 @@ private fun fileIcon(category: FileCategory): ImageVector = when (category) {
     FileCategory.OTHER -> Icons.AutoMirrored.Filled.InsertDriveFile
 }
 
-/**
- * 文件列表单项 — Material Files 风格
- * - 左侧: 圆角方块图标 + 类型颜色背景
- * - 中间: 文件名 + 日期 + 大小
- * - 右侧: 扩展名标签 / 目录箭头
- */
+/** 图标着色 (MT 风格: 仅文件夹暖金, 其余灰色) */
+private fun iconTint(category: FileCategory): Color = when (category) {
+    FileCategory.FOLDER -> Color(0xFFF9A825)
+    else -> Color(0xFF757575)
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileItemRow(
     fileItem: FileItem,
     viewModel: FileManagerViewModel,
     isSelected: Boolean = false,
+    isChecked: Boolean = false,
+    selectionMode: Boolean = false,
+    isFavorite: Boolean = false,
     onItemClick: () -> Unit,
     onItemLongClick: (() -> Unit)? = null
 ) {
     val category = FileTypeUtil.getCategory(fileItem)
-    val bgColor = iconBackgroundColor(category)
-    val tint = iconTintColor(category)
     val icon = fileIcon(category)
 
     val rowBg = when {
-        isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+        isChecked -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
         else -> Color.Transparent
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(rowBg)
-            .clickable(onClick = onItemClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // ======== 文件图标（圆角背景方块） ========
-        Box(
+    Column {
+        Row(
             modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(bgColor),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = category.label,
-                modifier = Modifier.size(22.dp),
-                tint = tint
-            )
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        // ======== 文件信息 ========
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = fileItem.name,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = if (fileItem.canRead)
-                    MaterialTheme.colorScheme.onSurface
-                else
-                    MaterialTheme.colorScheme.error
-            )
-            Spacer(modifier = Modifier.height(3.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = viewModel.formatDate(fileItem.lastModified),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                .fillMaxWidth()
+                .background(rowBg)
+                .combinedClickable(
+                    onClick = onItemClick,
+                    onLongClick = onItemLongClick
                 )
-                if (!fileItem.isDirectory) {
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // ======== 图标 / 缩略图 ========
+            if (category == FileCategory.IMAGE || category == FileCategory.VIDEO) {
+                val context = LocalContext.current
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(File(fileItem.path))
+                        .build(),
+                    imageLoader = ThumbnailLoader.get(context),
+                    contentDescription = category.label,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(6.dp)),
+                    contentScale = ContentScale.Crop,
+                    error = rememberVectorPainter(icon),
+                    fallback = rememberVectorPainter(icon)
+                )
+            } else {
+                Box(
+                    modifier = Modifier.size(36.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = category.label,
+                        modifier = Modifier.size(24.dp),
+                        tint = iconTint(category)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // ======== 文件名 + 元信息 ========
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = FileItem.formatSize(fileItem.size),
-                        style = MaterialTheme.typography.bodySmall,
+                        text = fileItem.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        color = if (fileItem.canRead)
+                            MaterialTheme.colorScheme.onSurface
+                        else
+                            MaterialTheme.colorScheme.error
+                    )
+                    if (isFavorite) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = "已收藏",
+                            modifier = Modifier.size(14.dp),
+                            tint = Color(0xFFF9A825)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(
+                        text = viewModel.formatDate(fileItem.lastModified),
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (fileItem.isDirectory) "--" else FileItem.formatSize(fileItem.size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // ======== 右侧: 复选框 / 目录箭头 / 扩展名 ========
+            Spacer(modifier = Modifier.width(8.dp))
+            when {
+                selectionMode -> {
+                    Checkbox(
+                        checked = isChecked,
+                        onCheckedChange = { onItemClick() }
+                    )
+                }
+                fileItem.isDirectory -> {
+                    Text(
+                        text = "›",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    )
+                }
+                else -> {
+                    Text(
+                        text = fileItem.extension.uppercase().take(5),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
             }
         }
 
-        // ======== 右侧类型标签 ========
-        if (fileItem.isDirectory) {
-            Text(
-                text = "${fileItem.name.count { it == '.' }}项",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            Text(
-                text = fileItem.extension.uppercase().take(4),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 62.dp),
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        )
     }
-
-    // 分割线
-    HorizontalDivider(
-        modifier = Modifier.padding(start = 70.dp),
-        thickness = 0.5.dp,
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-    )
 }

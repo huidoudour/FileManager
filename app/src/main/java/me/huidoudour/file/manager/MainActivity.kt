@@ -80,6 +80,9 @@ class MainActivity : ComponentActivity() {
                         setResult(RESULT_CANCELED)
                         finish()
                     },
+                    onShareFiles = { files ->
+                        shareFiles(files)
+                    },
                     canGoBack = isPickerMode
                 )
             }
@@ -141,6 +144,38 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** APK 安装器包名 */
         private const val INSTALLER_PACKAGE = "io.github.huidoudour.Installer"
+    }
+
+    /**
+     * 分享文件到其他 App (仅支持文件, 文件夹会被过滤)
+     */
+    private fun shareFiles(items: List<FileItem>) {
+        val files = items.filter { !it.isDirectory }.map { File(it.path) }.filter { it.exists() }
+        if (files.isEmpty()) {
+            Toast.makeText(this, "没有可分享的文件 (不支持分享文件夹)", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val uris = ArrayList<Uri>(files.map { file ->
+                FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            })
+            val intent = if (uris.size == 1) {
+                val item = items.first { !it.isDirectory }
+                Intent(Intent.ACTION_SEND).apply {
+                    type = me.huidoudour.file.manager.util.FileTypeUtil.getMimeType(item)
+                    putExtra(Intent.EXTRA_STREAM, uris[0])
+                }
+            } else {
+                Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = "*/*"
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                }
+            }
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(Intent.createChooser(intent, "分享 ${uris.size} 个文件"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     /**
