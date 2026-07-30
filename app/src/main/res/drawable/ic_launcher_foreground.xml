@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.46"
+        android:scaleY="0.46">
+
+        <!-- 文件夹主体（暖金色） -->
+        <path
+            android:fillColor="#2E7D32"
+            android:pathData="M100,36 A4,4 0 0 1 104,40 L104,90 A4,4 0 0 1 100,94 L8,94 A4,4 0 0 1 4,90 L4,40 A4,4 0 0 1 8,36 L20,28 L54,28 L62,36 Z" />
+
+        <!-- 探出文档（白色半透明） -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:fillAlpha="0.7"
+            android:pathData="M58,52 L76,52 L82,58 L82,76 L58,76 Z" />
+
+    </group>
+</vector>

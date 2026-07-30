@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 外部存储根目录 -->
+    <external-path
+        name="external"
+        path="/" />
+    <!-- 内部存储文件目录 -->
+    <files-path
+        name="files"
+        path="/" />
+    <!-- 内部存储缓存目录 -->
+    <cache-path
+        name="cache"
+        path="/" />
+    <!-- 外部存储文件目录 -->
+    <external-files-path
+        name="external_files"
+        path="/" />
+    <!-- 外部存储缓存目录 -->
+    <external-cache-path
+        name="external_cache"
+        path="/" />
+    <!-- 根文件系统 (需要 root 权限才能访问) -->
+    <root-path
+        name="root"
+        path="/" />
+</paths>

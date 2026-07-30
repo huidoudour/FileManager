@@ -1,0 +1,276 @@
+package me.huidoudour.file.manager
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.lifecycle.ViewModelProvider
+import me.huidoudour.file.manager.model.FileItem
+import me.huidoudour.file.manager.ui.component.FileListScreen
+import me.huidoudour.file.manager.ui.theme.FileManagerTheme
+import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
+import java.io.File
+import android.content.pm.ResolveInfo
+
+class MainActivity : ComponentActivity() {
+
+    private lateinit var viewModel: FileManagerViewModel
+    private var isPickerMode = false
+
+    // 权限请求 launcher
+    private val requestPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+            val allGranted = permissions.values.all { it }
+            if (allGranted) {
+                viewModel.refresh()
+                Toast.makeText(this, "权限已授予", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "需要存储权限才能浏览文件", Toast.LENGTH_LONG).show()
+            }
+        }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        // 初始化 ViewModel
+        viewModel = ViewModelProvider(this)[FileManagerViewModel::class.java]
+
+        // 检查是否是被其他 App 调用的文件选取模式
+        handleIntent(intent)
+
+        // 请求权限
+        requestStoragePermissions()
+
+        setContent {
+            FileManagerTheme {
+                var selectedFile by remember { mutableStateOf<FileItem?>(null) }
+
+                FileListScreen(
+                    viewModel = viewModel,
+                    isPickerMode = isPickerMode,
+                    selectedFile = selectedFile,
+                    onFileSelected = { file ->
+                        if (isPickerMode) {
+                            selectedFile = file
+                        } else {
+                            // 非选取模式点击文件：尝试用其他 App 打开
+                            openFile(file)
+                        }
+                    },
+                    onPickConfirmed = { file ->
+                        returnFileToCaller(file)
+                    },
+                    onPickCancelled = {
+                        setResult(RESULT_CANCELED)
+                        finish()
+                    },
+                    canGoBack = isPickerMode
+                )
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    /**
+     * 处理 Intent，判断是否是文件选取模式
+     */
+    private fun handleIntent(intent: Intent?) {
+        intent?.let {
+            val action = it.action
+            if (action == Intent.ACTION_OPEN_DOCUMENT ||
+                action == Intent.ACTION_GET_CONTENT ||
+                action == Intent.ACTION_PICK
+            ) {
+                isPickerMode = true
+                viewModel.setPickerMode(true)
+            }
+        }
+    }
+
+    /**
+     * 将选中的文件返回给调用方
+     */
+    private fun returnFileToCaller(fileItem: FileItem) {
+        val file = File(fileItem.path)
+        if (file.exists()) {
+            try {
+                val uri: Uri = FileProvider.getUriForFile(
+                    this,
+                    "${packageName}.fileprovider",
+                    file
+                )
+                val resultIntent = Intent().apply {
+                    data = uri
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                setResult(RESULT_OK, resultIntent)
+            } catch (e: Exception) {
+                // 降级：直接用文件路径的 Uri
+                val uri = Uri.fromFile(file)
+                val resultIntent = Intent().apply {
+                    data = uri
+                }
+                setResult(RESULT_OK, resultIntent)
+            }
+        } else {
+            setResult(RESULT_CANCELED)
+        }
+        finish()
+    }
+
+    companion object {
+        /** APK 安装器包名 */
+        private const val INSTALLER_PACKAGE = "io.github.huidoudour.Installer"
+    }
+
+    /**
+     * 用其他 App 打开文件
+     */
+    private fun openFile(fileItem: FileItem) {
+        if (fileItem.isDirectory) {
+            viewModel.navigateToDirectory(fileItem)
+            return
+        }
+        val file = File(fileItem.path)
+        if (!file.exists()) {
+            Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // APK 文件：仅通过指定安装器安装
+        if (fileItem.extension.equals("apk", ignoreCase = true)) {
+            installApk(file, fileItem)
+            return
+        }
+
+        try {
+            val uri: Uri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.fileprovider",
+                file
+            )
+            val mimeType = me.huidoudour.file.manager.util.FileTypeUtil.getMimeType(fileItem)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mimeType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            if (intent.resolveActivity(packageManager) != null) {
+                startActivity(intent)
+            } else {
+                Toast.makeText(this, "没有可打开此文件的应用", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "打开文件失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 使用指定安装器 io.github.huidoudour.Installer 安装 APK
+     */
+    private fun installApk(file: File, fileItem: FileItem) {
+        try {
+            // 先确认安装器包是否存在
+            try {
+                packageManager.getPackageInfo(INSTALLER_PACKAGE, 0)
+            } catch (_: PackageManager.NameNotFoundException) {
+                Toast.makeText(
+                    this,
+                    "请先安装 io.github.huidoudour.Installer 安装器",
+                    Toast.LENGTH_LONG
+                ).show()
+                return
+            }
+
+            val uri: Uri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.fileprovider",
+                file
+            )
+
+            // 构建 ACTION_VIEW Intent，锁定到指定安装器
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                // 仅允许 io.github.huidoudour.Installer 响应
+                setPackage(INSTALLER_PACKAGE)
+            }
+
+            // 授权 URI 给安装器
+            grantUriPermission(
+                INSTALLER_PACKAGE,
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            startActivity(intent)
+        } catch (e: Exception) {
+            val msg = if (e is android.content.ActivityNotFoundException) {
+                "io.github.huidoudour.Installer 不支持安装此 APK"
+            } else {
+                "安装失败: ${e.message}"
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 请求存储权限
+     */
+    private fun requestStoragePermissions() {
+        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+ 需要 MANAGE_EXTERNAL_STORAGE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VIDEO,
+                    Manifest.permission.READ_MEDIA_AUDIO
+                )
+            } else {
+                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        } else {
+            arrayOf(
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            )
+        }
+
+        val needsPermission = permissions.any {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (needsPermission) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // Android 11+ 全文件访问权限
+                if (!Environment.isExternalStorageManager()) {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                }
+            } else {
+                requestPermissionLauncher.launch(permissions)
+            }
+        }
+    }
+}
