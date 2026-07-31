@@ -1,5 +1,6 @@
 package me.huidoudour.file.manager.util
 
+import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Archive
@@ -12,21 +13,22 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.ui.graphics.vector.ImageVector
+import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
 import java.io.File
 
 /** 文件类别 */
-enum class FileCategory(val label: String) {
-    FOLDER("文件夹"),
-    IMAGE("图片"),
-    VIDEO("视频"),
-    AUDIO("音频"),
-    DOCUMENT("文档"),
-    PDF("PDF"),
-    ARCHIVE("压缩包"),
-    CODE("代码"),
-    APK("安装包"),
-    OTHER("其他")
+enum class FileCategory(@StringRes val labelRes: Int) {
+    FOLDER(R.string.category_folder),
+    IMAGE(R.string.category_image),
+    VIDEO(R.string.category_video),
+    AUDIO(R.string.category_audio),
+    DOCUMENT(R.string.category_document),
+    PDF(R.string.category_pdf),
+    ARCHIVE(R.string.category_archive),
+    CODE(R.string.category_code),
+    APK(R.string.category_apk),
+    OTHER(R.string.category_other)
 }
 
 object FileTypeUtil {

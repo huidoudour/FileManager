@@ -1,6 +1,8 @@
 package me.huidoudour.file.manager.ui.component
 
 import android.os.Environment
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,12 +12,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
@@ -30,16 +33,21 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.annotation.StringRes
+import me.huidoudour.file.manager.R
+import me.huidoudour.file.manager.ui.theme.FileTintFolder
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
 
@@ -47,7 +55,7 @@ import java.io.File
 //  侧边栏抽屉: 快捷目录 + 收藏
 // =============================================================================
 
-private data class QuickDir(val label: String, val path: String, val icon: ImageVector)
+private data class QuickDir(@StringRes val labelRes: Int, val path: String, val icon: ImageVector)
 
 /** 常用快捷目录 (仅列出实际存在的) */
 private fun buildQuickDirs(): List<QuickDir> {
@@ -55,13 +63,13 @@ private fun buildQuickDirs(): List<QuickDir> {
         Environment.getExternalStoragePublicDirectory(type).absolutePath
 
     return listOf(
-        QuickDir("内部存储", FileManagerViewModel.STORAGE_ROOT, Icons.Filled.PhoneAndroid),
-        QuickDir("下载", publicDir(Environment.DIRECTORY_DOWNLOADS), Icons.Filled.Download),
-        QuickDir("相机", publicDir(Environment.DIRECTORY_DCIM), Icons.Filled.PhotoCamera),
-        QuickDir("图片", publicDir(Environment.DIRECTORY_PICTURES), Icons.Filled.Image),
-        QuickDir("视频", publicDir(Environment.DIRECTORY_MOVIES), Icons.Filled.Movie),
-        QuickDir("音乐", publicDir(Environment.DIRECTORY_MUSIC), Icons.Filled.MusicNote),
-        QuickDir("文档", publicDir(Environment.DIRECTORY_DOCUMENTS), Icons.Filled.Description)
+        QuickDir(R.string.internal_storage, FileManagerViewModel.STORAGE_ROOT, Icons.Filled.PhoneAndroid),
+        QuickDir(R.string.quick_downloads, publicDir(Environment.DIRECTORY_DOWNLOADS), Icons.Filled.Download),
+        QuickDir(R.string.quick_camera, publicDir(Environment.DIRECTORY_DCIM), Icons.Filled.PhotoCamera),
+        QuickDir(R.string.quick_pictures, publicDir(Environment.DIRECTORY_PICTURES), Icons.Filled.Image),
+        QuickDir(R.string.quick_videos, publicDir(Environment.DIRECTORY_MOVIES), Icons.Filled.Movie),
+        QuickDir(R.string.quick_music, publicDir(Environment.DIRECTORY_MUSIC), Icons.Filled.MusicNote),
+        QuickDir(R.string.quick_documents, publicDir(Environment.DIRECTORY_DOCUMENTS), Icons.Filled.Description)
     ).filter { File(it.path).exists() }
 }
 
@@ -82,33 +90,66 @@ fun DrawerContent(
                 .fillMaxHeight()
                 .verticalScroll(rememberScrollState())
         ) {
-            // ---- 标题 ----
-            Text(
-                text = "文件管理器",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp)
+            // ---- 头部 ----
+            Row(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.FolderOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column {
+                    Text(
+                        text = stringResource(R.string.drawer_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(R.string.drawer_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant
             )
-            HorizontalDivider()
 
             // ---- 快捷目录 ----
-            SectionLabel("位置")
+            SectionLabel(stringResource(R.string.section_locations))
             quickDirs.forEach { dir ->
                 NavigationDrawerItem(
-                    label = { Text(dir.label) },
+                    label = { Text(stringResource(dir.labelRes)) },
                     icon = { Icon(imageVector = dir.icon, contentDescription = null) },
                     selected = currentPath == dir.path,
                     onClick = { onNavigate(dir.path) },
+                    colors = NavigationDrawerItemDefaults.colors(),
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
             }
 
             // ---- 收藏 ----
-            HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
-            SectionLabel("收藏")
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+            SectionLabel(stringResource(R.string.section_favorites))
             if (favorites.isEmpty()) {
                 Text(
-                    text = "长按文件夹选择\"收藏\"添加",
+                    text = stringResource(R.string.favorites_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
@@ -138,7 +179,7 @@ fun DrawerContent(
                                 Icon(
                                     imageVector = Icons.Filled.Star,
                                     contentDescription = null,
-                                    tint = Color(0xFFF9A825)
+                                    tint = FileTintFolder
                                 )
                             },
                             selected = currentPath == path,
@@ -148,7 +189,7 @@ fun DrawerContent(
                         IconButton(onClick = { onRemoveFavorite(path) }) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
-                                contentDescription = "移除收藏",
+                                contentDescription = stringResource(R.string.remove_favorite),
                                 modifier = Modifier.size(16.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -158,10 +199,20 @@ fun DrawerContent(
             }
 
             // ---- 设置项 ----
-            HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
-            SectionLabel("显示")
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+            SectionLabel(stringResource(R.string.section_display))
             NavigationDrawerItem(
-                label = { Text(if (showHidden) "隐藏隐藏文件" else "显示隐藏文件") },
+                label = {
+                    Text(
+                        stringResource(
+                            if (showHidden) R.string.hide_hidden_files
+                            else R.string.show_hidden_files
+                        )
+                    )
+                },
                 icon = {
                     Icon(
                         imageVector = if (showHidden) Icons.Filled.VisibilityOff
@@ -183,7 +234,8 @@ private fun SectionLabel(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Medium,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+        modifier = Modifier.padding(horizontal = 28.dp, vertical = 10.dp)
     )
 }

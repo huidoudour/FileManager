@@ -38,9 +38,9 @@ class MainActivity : ComponentActivity() {
             val allGranted = permissions.values.all { it }
             if (allGranted) {
                 viewModel.refresh()
-                Toast.makeText(this, "权限已授予", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.permission_granted), Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "需要存储权限才能浏览文件", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, getString(R.string.permission_denied), Toast.LENGTH_LONG).show()
             }
         }
 
@@ -152,7 +152,7 @@ class MainActivity : ComponentActivity() {
     private fun shareFiles(items: List<FileItem>) {
         val files = items.filter { !it.isDirectory }.map { File(it.path) }.filter { it.exists() }
         if (files.isEmpty()) {
-            Toast.makeText(this, "没有可分享的文件 (不支持分享文件夹)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.share_no_files), Toast.LENGTH_SHORT).show()
             return
         }
         try {
@@ -172,9 +172,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            startActivity(Intent.createChooser(intent, "分享 ${uris.size} 个文件"))
+            startActivity(Intent.createChooser(intent, getString(R.string.share_files_title, uris.size)))
         } catch (e: Exception) {
-            Toast.makeText(this, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                getString(R.string.share_failed, e.message ?: ""),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -188,7 +192,7 @@ class MainActivity : ComponentActivity() {
         }
         val file = File(fileItem.path)
         if (!file.exists()) {
-            Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.file_not_found), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -212,10 +216,14 @@ class MainActivity : ComponentActivity() {
             if (intent.resolveActivity(packageManager) != null) {
                 startActivity(intent)
             } else {
-                Toast.makeText(this, "没有可打开此文件的应用", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.no_app_to_open), Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "打开文件失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                getString(R.string.open_file_failed, e.message ?: ""),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -230,7 +238,7 @@ class MainActivity : ComponentActivity() {
             } catch (_: PackageManager.NameNotFoundException) {
                 Toast.makeText(
                     this,
-                    "请先安装 io.github.huidoudour.Installer 安装器",
+                    getString(R.string.installer_required),
                     Toast.LENGTH_LONG
                 ).show()
                 return
@@ -260,9 +268,9 @@ class MainActivity : ComponentActivity() {
             startActivity(intent)
         } catch (e: Exception) {
             val msg = if (e is android.content.ActivityNotFoundException) {
-                "io.github.huidoudour.Installer 不支持安装此 APK"
+                getString(R.string.installer_unsupported)
             } else {
-                "安装失败: ${e.message}"
+                getString(R.string.install_failed, e.message ?: "")
             }
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }

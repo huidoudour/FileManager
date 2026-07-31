@@ -7,8 +7,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.NoteAdd
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -21,8 +29,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
 import me.huidoudour.file.manager.util.FileTypeUtil
 import me.huidoudour.file.manager.viewmodel.DirStats
@@ -42,13 +52,14 @@ fun RenameDialog(
     var name by remember { mutableStateOf(item.name) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("重命名") },
+        icon = { Icon(Icons.Filled.DriveFileRenameOutline, contentDescription = null) },
+        title = { Text(stringResource(R.string.action_rename)) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 singleLine = true,
-                label = { Text("新名称") },
+                label = { Text(stringResource(R.string.new_name)) },
                 modifier = Modifier.fillMaxWidth()
             )
         },
@@ -57,11 +68,11 @@ fun RenameDialog(
                 onClick = { onConfirm(name.trim()) },
                 enabled = name.trim().isNotEmpty() && name.trim() != item.name
             ) {
-                Text("确定")
+                Text(stringResource(R.string.ok))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
     )
 }
@@ -76,13 +87,20 @@ fun CreateItemDialog(
     var name by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isFolder) "新建文件夹" else "新建文件") },
+        icon = {
+            Icon(
+                if (isFolder) Icons.Filled.CreateNewFolder
+                else Icons.AutoMirrored.Filled.NoteAdd,
+                contentDescription = null
+            )
+        },
+        title = { Text(stringResource(if (isFolder) R.string.create_folder else R.string.create_file)) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 singleLine = true,
-                label = { Text("名称") },
+                label = { Text(stringResource(R.string.name)) },
                 modifier = Modifier.fillMaxWidth()
             )
         },
@@ -91,11 +109,11 @@ fun CreateItemDialog(
                 onClick = { onConfirm(name.trim()) },
                 enabled = name.trim().isNotEmpty()
             ) {
-                Text("创建")
+                Text(stringResource(R.string.create))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
     )
 }
@@ -109,19 +127,26 @@ fun DeleteConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("删除") },
+        icon = {
+            Icon(
+                Icons.Filled.Delete,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+        },
+        title = { Text(stringResource(R.string.action_delete)) },
         text = {
             val desc = if (items.size == 1) "\"${items.first().name}\""
-            else "这 ${items.size} 项"
-            Text("确定删除 $desc 吗？此操作不可恢复。")
+            else stringResource(R.string.delete_desc_multiple, items.size)
+            Text(stringResource(R.string.delete_confirm_message, desc))
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("删除", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
     )
 }
@@ -136,10 +161,17 @@ fun ConflictDialog(
 ) {
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("存在同名文件") },
+        icon = {
+            Icon(
+                Icons.Filled.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.tertiary
+            )
+        },
+        title = { Text(stringResource(R.string.conflict_title)) },
         text = {
             Column {
-                Text("目标目录中已存在 ${conflictNames.size} 个同名项:")
+                Text(stringResource(R.string.conflict_message, conflictNames.size))
                 Spacer(modifier = Modifier.height(6.dp))
                 conflictNames.take(5).forEach { name ->
                     Text(
@@ -150,7 +182,7 @@ fun ConflictDialog(
                 }
                 if (conflictNames.size > 5) {
                     Text(
-                        text = "… 等 ${conflictNames.size} 项",
+                        text = stringResource(R.string.conflict_more, conflictNames.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -159,13 +191,13 @@ fun ConflictDialog(
         },
         confirmButton = {
             TextButton(onClick = onOverwrite) {
-                Text("覆盖", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.overwrite), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
             Row {
-                TextButton(onClick = onSkip) { Text("跳过") }
-                TextButton(onClick = onCancel) { Text("取消") }
+                TextButton(onClick = onSkip) { Text(stringResource(R.string.skip)) }
+                TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
             }
         }
     )
@@ -215,15 +247,19 @@ fun PropertiesDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("属性") },
+        icon = { Icon(Icons.Filled.Info, contentDescription = null) },
+        title = { Text(stringResource(R.string.action_properties)) },
         text = {
             Column {
-                PropertyRow("名称", item.name)
-                PropertyRow("路径", item.path)
-                PropertyRow("类型", FileTypeUtil.getCategory(item).label)
+                PropertyRow(stringResource(R.string.name), item.name)
+                PropertyRow(stringResource(R.string.prop_path), item.path)
+                PropertyRow(
+                    stringResource(R.string.prop_type),
+                    stringResource(FileTypeUtil.getCategory(item).labelRes)
+                )
                 if (stats != null && !stats.finished) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        PropertyRow("大小", "计算中")
+                        PropertyRow(stringResource(R.string.prop_size), stringResource(R.string.calculating))
                         Spacer(modifier = Modifier.width(6.dp))
                         CircularProgressIndicator(
                             modifier = Modifier
@@ -233,24 +269,27 @@ fun PropertiesDialog(
                         )
                     }
                 } else {
-                    PropertyRow("大小", FileItem.formatSize(stats?.size ?: item.size))
+                    PropertyRow(stringResource(R.string.prop_size), FileItem.formatSize(stats?.size ?: item.size))
                     if (item.isDirectory && stats != null) {
-                        PropertyRow("包含", "${stats.fileCount} 个文件, ${stats.dirCount} 个文件夹")
+                        PropertyRow(
+                            stringResource(R.string.prop_contains),
+                            stringResource(R.string.contains_counts, stats.fileCount, stats.dirCount)
+                        )
                     }
                 }
-                PropertyRow("修改时间", formatDate(item.lastModified))
+                PropertyRow(stringResource(R.string.prop_modified), formatDate(item.lastModified))
                 PropertyRow(
-                    "权限",
+                    stringResource(R.string.prop_permissions),
                     buildList {
-                        if (item.canRead) add("可读")
-                        if (item.canWrite) add("可写")
-                        if (item.isHidden) add("隐藏")
-                    }.joinToString(" / ").ifEmpty { "无" }
+                        if (item.canRead) add(stringResource(R.string.perm_readable))
+                        if (item.canWrite) add(stringResource(R.string.perm_writable))
+                        if (item.isHidden) add(stringResource(R.string.perm_hidden))
+                    }.joinToString(" / ").ifEmpty { stringResource(R.string.none) }
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("关闭") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
         }
     )
 }

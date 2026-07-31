@@ -1,13 +1,15 @@
 package me.huidoudour.file.manager.util
 
+import androidx.annotation.StringRes
+import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
 
 /** 排序方式 */
-enum class SortMode(val label: String) {
-    NAME("名称"),
-    SIZE("大小"),
-    DATE("日期"),
-    TYPE("类型")
+enum class SortMode(@StringRes val labelRes: Int) {
+    NAME(R.string.sort_name),
+    SIZE(R.string.sort_size),
+    DATE(R.string.sort_date),
+    TYPE(R.string.sort_type)
 }
 
 object FileSortUtil {

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
 import me.huidoudour.file.manager.util.FileOperationUtil
 import me.huidoudour.file.manager.util.FileSortUtil
@@ -60,6 +61,10 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     private val prefs =
         application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    /** 取字符串资源 */
+    private fun str(resId: Int, vararg args: Any): String =
+        getApplication<Application>().getString(resId, *args)
 
     // --- 状态 ---
 
@@ -133,15 +138,22 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     private var statsJob: Job? = null
 
-    /** 导航历史栈 */
-    private val _navigationHistory = mutableListOf<String>()
+    /** 导航历史: 后退/前进双栈 */
+    private val backStack = ArrayDeque<String>()
+    private val forwardStack = ArrayDeque<String>()
+
+    private val _canGoBack = MutableStateFlow(false)
+    val canGoBack: StateFlow<Boolean> = _canGoBack.asStateFlow()
+
+    private val _canGoForward = MutableStateFlow(false)
+    val canGoForward: StateFlow<Boolean> = _canGoForward.asStateFlow()
 
     /** 是否处于文件选取模式 */
     private var _pickerMode = false
 
     init {
         val startPath = getSavedPath()
-        loadDirectory(startPath)
+        loadDirectory(startPath, recordHistory = false)
     }
 
     // --- 公开方法 ---
@@ -154,8 +166,10 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     /**
      * 加载指定目录的文件列表
+     *
+     * @param recordHistory 加载成功后是否将原路径记入后退栈 (后退/前进导航时传 false)
      */
-    fun loadDirectory(path: String) {
+    fun loadDirectory(path: String, recordHistory: Boolean = true) {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
@@ -163,21 +177,27 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 val fileList = withContext(Dispatchers.IO) {
                     val dir = File(path)
                     if (!dir.exists() || !dir.isDirectory) {
-                        throw Exception("目录不存在或无法访问: $path")
+                        throw Exception(str(R.string.dir_not_accessible, path))
                     }
                     if (!dir.canRead()) {
-                        throw Exception("没有读取权限: $path")
+                        throw Exception(str(R.string.no_read_permission, path))
                     }
                     dir.listFiles()
                         ?.filter { _showHidden.value || !it.isHidden }
                         ?.map { toFileItem(it) }
                         ?: emptyList()
                 }
+                val oldPath = _currentPath.value
+                if (recordHistory && oldPath != path) {
+                    backStack.addLast(oldPath)
+                    forwardStack.clear()
+                    updateNavState()
+                }
                 _currentPath.value = path
                 _files.value = FileSortUtil.sort(fileList, _sortMode.value, _sortAscending.value)
                 saveCurrentPath()
             } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "未知错误"
+                _errorMessage.value = e.message ?: str(R.string.unknown_error)
                 _files.value = emptyList()
             } finally {
                 _isLoading.value = false
@@ -198,13 +218,12 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     fun navigateToDirectory(fileItem: FileItem) {
         if (fileItem.isDirectory && fileItem.canRead) {
             clearSelection()
-            _navigationHistory.add(0, _currentPath.value)
             loadDirectory(fileItem.path)
         }
     }
 
     /**
-     * 返回上级目录
+     * 返回上级目录 (MT 风格)
      */
     fun navigateUp(): Boolean {
         val currentPath = _currentPath.value
@@ -212,9 +231,6 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
         val parentFile = File(currentPath).parentFile
         if (parentFile != null && parentFile.canRead()) {
-            if (_navigationHistory.isNotEmpty()) {
-                _navigationHistory.removeFirstOrNull()
-            }
             loadDirectory(parentFile.absolutePath)
             return true
         }
@@ -222,15 +238,39 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     /**
-     * 后退 (使用历史栈)
+     * 上一步 (后退历史栈)
      */
     fun navigateBack(): Boolean {
-        if (_navigationHistory.isNotEmpty()) {
-            val previousPath = _navigationHistory.removeAt(0)
-            loadDirectory(previousPath)
-            return true
+        val previousPath = backStack.removeLastOrNull() ?: return false
+        forwardStack.addLast(_currentPath.value)
+        updateNavState()
+        loadDirectory(previousPath, recordHistory = false)
+        return true
+    }
+
+    /**
+     * 下一步 (前进历史栈)
+     */
+    fun navigateForward(): Boolean {
+        val nextPath = forwardStack.removeLastOrNull() ?: return false
+        backStack.addLast(_currentPath.value)
+        updateNavState()
+        loadDirectory(nextPath, recordHistory = false)
+        return true
+    }
+
+    /**
+     * 回到主目录 (存储根)
+     */
+    fun navigateHome() {
+        if (_currentPath.value != STORAGE_ROOT) {
+            loadDirectory(STORAGE_ROOT)
         }
-        return false
+    }
+
+    private fun updateNavState() {
+        _canGoBack.value = backStack.isNotEmpty()
+        _canGoForward.value = forwardStack.isNotEmpty()
     }
 
     /**
@@ -264,7 +304,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         var accumulatedPath =
             if (path.startsWith(File.separator)) File.separator else ""
         // 存储根显示为 "内部存储"
-        segments.add("内部存储" to STORAGE_ROOT)
+        segments.add(str(R.string.internal_storage) to STORAGE_ROOT)
         for (part in parts) {
             accumulatedPath = if (accumulatedPath.endsWith(File.separator))
                 accumulatedPath + part
@@ -353,14 +393,14 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         if (items.isEmpty()) return
         _clipboard.value = ClipboardData(items, isCut = false)
         clearSelection()
-        _toastMessage.value = "已复制 ${items.size} 项, 到目标目录后粘贴"
+        _toastMessage.value = str(R.string.copied_items, items.size)
     }
 
     fun cutToClipboard(items: List<FileItem>) {
         if (items.isEmpty()) return
         _clipboard.value = ClipboardData(items, isCut = true)
         clearSelection()
-        _toastMessage.value = "已剪切 ${items.size} 项, 到目标目录后粘贴"
+        _toastMessage.value = str(R.string.cut_items, items.size)
     }
 
     fun clearClipboard() {
@@ -394,7 +434,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     private fun performPaste(overwrite: Boolean) {
         val clip = _clipboard.value ?: return
         val destDir = File(_currentPath.value)
-        val title = if (clip.isCut) "移动中" else "复制中"
+        val title = if (clip.isCut) str(R.string.moving) else str(R.string.copying)
         viewModelScope.launch {
             _operationProgress.value = OperationProgress(title, "", 0, clip.items.size)
             var failed = 0
@@ -429,7 +469,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             }
             _operationProgress.value = null
             if (clip.isCut) _clipboard.value = null
-            _toastMessage.value = if (failed == 0) "操作完成" else "$failed 项操作失败"
+            _toastMessage.value =
+                if (failed == 0) str(R.string.operation_done)
+                else str(R.string.operation_failed_items, failed)
             refresh()
         }
     }
@@ -441,18 +483,20 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     fun deleteFiles(items: List<FileItem>) {
         if (items.isEmpty()) return
         viewModelScope.launch {
-            _operationProgress.value = OperationProgress("删除中", "", 0, items.size)
+            _operationProgress.value = OperationProgress(str(R.string.deleting), "", 0, items.size)
             var failed = 0
             withContext(Dispatchers.IO) {
                 items.forEachIndexed { index, item ->
                     _operationProgress.value =
-                        OperationProgress("删除中", item.name, index, items.size)
+                        OperationProgress(str(R.string.deleting), item.name, index, items.size)
                     if (!FileOperationUtil.deleteRecursively(File(item.path))) failed++
                 }
             }
             _operationProgress.value = null
             clearSelection()
-            _toastMessage.value = if (failed == 0) "已删除 ${items.size} 项" else "$failed 项删除失败"
+            _toastMessage.value =
+                if (failed == 0) str(R.string.deleted_items, items.size)
+                else str(R.string.delete_failed_items, failed)
             refresh()
         }
     }
@@ -462,16 +506,16 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             val src = File(item.path)
             val dest = File(src.parentFile, newName)
             when {
-                newName.isBlank() -> _toastMessage.value = "名称不能为空"
-                dest.exists() -> _toastMessage.value = "已存在同名文件"
-                !src.renameTo(dest) -> _toastMessage.value = "重命名失败"
+                newName.isBlank() -> _toastMessage.value = str(R.string.name_empty)
+                dest.exists() -> _toastMessage.value = str(R.string.name_exists)
+                !src.renameTo(dest) -> _toastMessage.value = str(R.string.rename_failed)
                 else -> {
                     // 同步更新收藏中的旧路径
                     if (item.path in _favorites.value) {
                         toggleFavorite(item.path)
                         toggleFavorite(dest.absolutePath)
                     }
-                    _toastMessage.value = "已重命名为 $newName"
+                    _toastMessage.value = str(R.string.renamed_to, newName)
                 }
             }
             clearSelection()
@@ -491,15 +535,16 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch(Dispatchers.IO) {
             val target = File(_currentPath.value, name)
             when {
-                name.isBlank() -> _toastMessage.value = "名称不能为空"
-                target.exists() -> _toastMessage.value = "已存在同名文件"
+                name.isBlank() -> _toastMessage.value = str(R.string.name_empty)
+                target.exists() -> _toastMessage.value = str(R.string.name_exists)
                 else -> {
                     val ok = try {
                         if (isFolder) target.mkdirs() else target.createNewFile()
                     } catch (_: Exception) {
                         false
                     }
-                    _toastMessage.value = if (ok) "已创建 $name" else "创建失败"
+                    _toastMessage.value =
+                        if (ok) str(R.string.created_item, name) else str(R.string.create_failed)
                 }
             }
             refresh()
@@ -584,7 +629,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         if (!added) current.remove(path)
         prefs.edit().putStringSet(KEY_FAVORITES, current).apply()
         _favorites.value = current.sortedBy { File(it).name.lowercase() }
-        if (added) _toastMessage.value = "已收藏"
+        if (added) _toastMessage.value = str(R.string.favorite_added)
     }
 
     // =========================================================================

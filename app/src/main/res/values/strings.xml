@@ -1,22 +1,156 @@
 <resources>
     <string name="app_name">File Manager</string>
-    <string name="dis_name">文件管理器</string>
-    <string name="picker_title">选择文件</string>
-    <string name="confirm_select">确认选择</string>
+    <string name="dis_name">文件管理</string>
+
+    <!-- 通用 -->
+    <string name="ok">确定</string>
     <string name="cancel">取消</string>
+    <string name="close">关闭</string>
+    <string name="create">创建</string>
+    <string name="name">名称</string>
+    <string name="more">更多</string>
+    <string name="error_title">错误</string>
+    <string name="unknown_error">未知错误</string>
+
+    <!-- 顶栏 / 菜单 -->
+    <string name="menu">菜单</string>
+    <string name="search">搜索</string>
     <string name="sort_by">排序方式</string>
     <string name="refresh">刷新</string>
-    <string name="parent_dir">返回上级目录</string>
-    <string name="dir_empty">目录为空</string>
-    <string name="permission_denied">需要存储权限才能浏览文件</string>
-    <string name="permission_granted">权限已授予</string>
-    <string name="file_not_found">文件不存在</string>
-    <string name="no_app_to_open">没有可打开此文件的应用</string>
-    <string name="open_file_failed">打开文件失败</string>
+    <string name="create_folder">新建文件夹</string>
+    <string name="create_file">新建文件</string>
+    <string name="show_hidden_files">显示隐藏文件</string>
+    <string name="hide_hidden_files">隐藏隐藏文件</string>
+
+    <!-- 排序 -->
     <string name="sort_name">名称</string>
     <string name="sort_size">大小</string>
     <string name="sort_date">日期</string>
     <string name="sort_type">类型</string>
-    <string name="directory">目录</string>
-    <string name="selected">已选择</string>
+
+    <!-- 多选 -->
+    <string name="selected_count">已选 %1$d 项</string>
+    <string name="exit_selection">退出多选</string>
+    <string name="select_all">全选</string>
+    <string name="properties_single_only">属性 (仅单选可用)</string>
+
+    <!-- 搜索 -->
+    <string name="search_placeholder">搜索当前目录及子目录</string>
+    <string name="clear">清空</string>
+    <string name="exit_search">退出搜索</string>
+    <string name="no_search_results">无匹配结果</string>
+    <string name="dir_empty">目录为空</string>
+
+    <!-- 文件操作 -->
+    <string name="action_copy">复制</string>
+    <string name="action_cut">剪切</string>
+    <string name="action_delete">删除</string>
+    <string name="action_rename">重命名</string>
+    <string name="action_share">分享</string>
+    <string name="action_favorite">收藏</string>
+    <string name="action_unfavorite">取消收藏</string>
+    <string name="action_properties">属性</string>
+    <string name="action_multi_select">多选</string>
+
+    <!-- 底部导航栏 -->
+    <string name="nav_back">上一步</string>
+    <string name="nav_forward">下一步</string>
+    <string name="nav_home">主目录</string>
+    <string name="nav_create">新建</string>
+    <string name="nav_up">上一级</string>
+    <string name="press_back_again">再按一次返回退出应用</string>
+
+    <!-- 剪贴板 / 粘贴 -->
+    <string name="pending_copy">待复制 %1$d 项</string>
+    <string name="pending_move">待移动 %1$d 项</string>
+    <string name="paste_here">粘贴到此处</string>
+    <string name="conflict_title">存在同名文件</string>
+    <string name="conflict_message">目标目录中已存在 %1$d 个同名项:</string>
+    <string name="conflict_more">… 等 %1$d 项</string>
+    <string name="overwrite">覆盖</string>
+    <string name="skip">跳过</string>
+
+    <!-- 对话框 -->
+    <string name="new_name">新名称</string>
+    <string name="delete_confirm_message">确定删除 %1$s 吗？此操作不可恢复。</string>
+    <string name="delete_desc_multiple">这 %1$d 项</string>
+
+    <!-- 属性对话框 -->
+    <string name="prop_path">路径</string>
+    <string name="prop_type">类型</string>
+    <string name="prop_size">大小</string>
+    <string name="prop_contains">包含</string>
+    <string name="prop_modified">修改时间</string>
+    <string name="prop_permissions">权限</string>
+    <string name="calculating">计算中</string>
+    <string name="contains_counts">%1$d 个文件, %2$d 个文件夹</string>
+    <string name="perm_readable">可读</string>
+    <string name="perm_writable">可写</string>
+    <string name="perm_hidden">隐藏</string>
+    <string name="none">无</string>
+
+    <!-- 文件类别 -->
+    <string name="category_folder">文件夹</string>
+    <string name="category_image">图片</string>
+    <string name="category_video">视频</string>
+    <string name="category_audio">音频</string>
+    <string name="category_document">文档</string>
+    <string name="category_pdf">PDF</string>
+    <string name="category_archive">压缩包</string>
+    <string name="category_code">代码</string>
+    <string name="category_apk">安装包</string>
+    <string name="category_other">其他</string>
+
+    <!-- 抽屉 -->
+    <string name="drawer_title">文件管理器</string>
+    <string name="drawer_subtitle">浏览本地文件</string>
+    <string name="section_locations">位置</string>
+    <string name="section_favorites">收藏</string>
+    <string name="section_display">显示</string>
+    <string name="internal_storage">内部存储</string>
+    <string name="quick_downloads">下载</string>
+    <string name="quick_camera">相机</string>
+    <string name="quick_pictures">图片</string>
+    <string name="quick_videos">视频</string>
+    <string name="quick_music">音乐</string>
+    <string name="quick_documents">文档</string>
+    <string name="favorites_hint">长按文件夹选择\"收藏\"添加</string>
+    <string name="remove_favorite">移除收藏</string>
+    <string name="favorite_added">已收藏</string>
+
+    <!-- ViewModel 提示消息 -->
+    <string name="dir_not_accessible">目录不存在或无法访问: %1$s</string>
+    <string name="no_read_permission">没有读取权限: %1$s</string>
+    <string name="copied_items">已复制 %1$d 项, 到目标目录后粘贴</string>
+    <string name="cut_items">已剪切 %1$d 项, 到目标目录后粘贴</string>
+    <string name="copying">复制中</string>
+    <string name="moving">移动中</string>
+    <string name="deleting">删除中</string>
+    <string name="operation_done">操作完成</string>
+    <string name="operation_failed_items">%1$d 项操作失败</string>
+    <string name="deleted_items">已删除 %1$d 项</string>
+    <string name="delete_failed_items">%1$d 项删除失败</string>
+    <string name="name_empty">名称不能为空</string>
+    <string name="name_exists">已存在同名文件</string>
+    <string name="rename_failed">重命名失败</string>
+    <string name="renamed_to">已重命名为 %1$s</string>
+    <string name="created_item">已创建 %1$s</string>
+    <string name="create_failed">创建失败</string>
+
+    <!-- 选取模式 -->
+    <string name="file_selected">已选择:</string>
+    <string name="confirm_select">确认选择</string>
+
+    <!-- MainActivity -->
+    <string name="permission_granted">权限已授予</string>
+    <string name="permission_denied">需要存储权限才能浏览文件</string>
+    <string name="file_not_found">文件不存在</string>
+    <string name="no_app_to_open">没有可打开此文件的应用</string>
+    <string name="open_file_failed">打开文件失败: %1$s</string>
+    <string name="share_no_files">没有可分享的文件 (不支持分享文件夹)</string>
+    <string name="share_files_title">分享 %1$d 个文件</string>
+    <string name="share_failed">分享失败: %1$s</string>
+    <string name="installer_required">请先安装 io.github.huidoudour.Installer 安装器</string>
+    <string name="installer_unsupported">io.github.huidoudour.Installer 不支持安装此 APK</string>
+    <string name="install_failed">安装失败: %1$s</string>
 </resources>

@@ -1,5 +1,6 @@
 package me.huidoudour.file.manager.ui.component
 
+import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -10,6 +11,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,23 +23,29 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -50,9 +58,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -70,16 +80,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
 import me.huidoudour.file.manager.util.SortMode
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
@@ -119,6 +131,8 @@ fun FileListScreen(
     val toastMessage by viewModel.toastMessage.collectAsState()
     val propertiesTarget by viewModel.propertiesTarget.collectAsState()
     val propertiesStats by viewModel.propertiesStats.collectAsState()
+    val canNavBack by viewModel.canGoBack.collectAsState()
+    val canNavForward by viewModel.canGoForward.collectAsState()
 
     var showSortDialog by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -132,15 +146,19 @@ fun FileListScreen(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val activity = LocalContext.current as? Activity
+    // 主目录下连续两次返回退出: 记录上次返回时间
+    var lastBackPressTime by remember { mutableStateOf(0L) }
 
     val selectionMode = selectedPaths.isNotEmpty()
     val searching = isSearchActive && searchQuery.isNotBlank()
     val displayedFiles = if (searching) searchResults else files
 
     // 当前目录名
+    val internalStorageLabel = stringResource(R.string.internal_storage)
     val currentDirName = remember(currentPath) {
         val name = File(currentPath).name
-        if (name.isEmpty()) "内部存储" else name
+        if (name.isEmpty()) internalStorageLabel else name
     }
 
     // ==================== 轻提示 ====================
@@ -152,13 +170,27 @@ fun FileListScreen(
     }
 
     // ==================== 返回键处理 ====================
+    val pressBackHint = stringResource(R.string.press_back_again)
     BackHandler(enabled = true) {
         when {
             drawerState.isOpen -> scope.launch { drawerState.close() }
             selectionMode -> viewModel.clearSelection()
             isSearchActive -> viewModel.closeSearch()
             isPickerMode && canGoBack -> onPickCancelled?.invoke()
-            else -> viewModel.navigateUp()
+            else -> {
+                // 子目录: 返回上一级; 主目录: 两次返回退出应用
+                if (!viewModel.navigateUp()) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastBackPressTime < 2000L) {
+                        activity?.finish()
+                    } else {
+                        lastBackPressTime = now
+                        scope.launch {
+                            snackbarHostState.showSnackbar(pressBackHint)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -166,11 +198,11 @@ fun FileListScreen(
     errorMessage?.let { error ->
         AlertDialog(
             onDismissRequest = { viewModel.clearError() },
-            title = { Text("错误") },
+            title = { Text(stringResource(R.string.error_title)) },
             text = { Text(error) },
             confirmButton = {
                 TextButton(onClick = { viewModel.clearError() }) {
-                    Text("确定")
+                    Text(stringResource(R.string.ok))
                 }
             }
         )
@@ -297,7 +329,6 @@ fun FileListScreen(
                             onToggleShowHidden = { viewModel.toggleShowHidden() }
                         )
                     }
-                    HorizontalDivider(thickness = 0.5.dp)
                 }
             },
             bottomBar = {
@@ -358,7 +389,7 @@ fun FileListScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "已选择:",
+                                        text = stringResource(R.string.file_selected),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -373,38 +404,25 @@ fun FileListScreen(
                                 Button(onClick = {
                                     selectedFile?.let { onPickConfirmed?.invoke(it) }
                                 }) {
-                                    Text("确认选择")
+                                    Text(stringResource(R.string.confirm_select))
                                 }
                             }
                         }
                     }
 
-                    // ---- MT 风格底部状态栏 ----
-                    if (!isPickerMode && !selectionMode && clipboard == null &&
-                        !isLoading && displayedFiles.isNotEmpty()
-                    ) {
-                        Column {
-                            HorizontalDivider(thickness = 0.5.dp)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.surface)
-                                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "${displayedFiles.size} 项" +
-                                        if (searching) " (搜索结果)" else "",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = sortMode.label + if (sortAscending) " ↑" else " ↓",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
+                    // ---- MT 风格底部导航栏 ----
+                    if (!isPickerMode && !selectionMode && !isSearchActive) {
+                        BottomNavBar(
+                            canBack = canNavBack,
+                            canForward = canNavForward,
+                            atRoot = currentPath == FileManagerViewModel.STORAGE_ROOT ||
+                                currentPath == "/",
+                            onBack = { viewModel.navigateBack() },
+                            onForward = { viewModel.navigateForward() },
+                            onHome = { viewModel.navigateHome() },
+                            onCreateFolder = { createDialogIsFolder = true },
+                            onNavigateUp = { viewModel.navigateUp() }
+                        )
                     }
                 }
             }
@@ -427,45 +445,27 @@ fun FileListScreen(
                             )
                         } else {
                             EmptyPlaceholder(
-                                text = "无匹配结果",
+                                text = stringResource(R.string.no_search_results),
                                 modifier = Modifier.align(Alignment.Center)
                             )
                         }
                     }
                     displayedFiles.isEmpty() && errorMessage == null -> {
                         EmptyPlaceholder(
-                            text = "目录为空",
+                            text = stringResource(R.string.dir_empty),
                             modifier = Modifier.align(Alignment.Center)
                         )
                     }
                     else -> {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            // 返回上级目录 (搜索时隐藏)
-                            if (!searching &&
-                                currentPath != FileManagerViewModel.STORAGE_ROOT &&
-                                currentPath != "/"
-                            ) {
-                                item(key = "parent_dir") {
-                                    ParentDirectoryRow(
-                                        onClick = { viewModel.navigateUp() }
-                                    )
-                                }
-                            }
-
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp)
+                        ) {
                             itemsIndexed(
                                 items = displayedFiles,
                                 key = { _, item -> item.path }
                             ) { _, fileItem ->
-                                // 长按菜单定位: 按下位置 + 行高 (DropdownMenu 默认锚在行底部)
-                                var menuOffset by remember { mutableStateOf(DpOffset.Zero) }
-                                var rowHeight by remember { mutableStateOf(0.dp) }
-                                val density = LocalDensity.current
-
-                                Box(
-                                    modifier = Modifier.onSizeChanged {
-                                        rowHeight = with(density) { it.height.toDp() }
-                                    }
-                                ) {
+                                Box {
                                     FileItemRow(
                                         fileItem = fileItem,
                                         viewModel = viewModel,
@@ -473,6 +473,7 @@ fun FileListScreen(
                                         isChecked = fileItem.path in selectedPaths,
                                         selectionMode = selectionMode,
                                         isFavorite = fileItem.path in favorites,
+                                        isMenuShown = actionTarget?.path == fileItem.path,
                                         onItemClick = {
                                             when {
                                                 selectionMode ->
@@ -485,26 +486,24 @@ fun FileListScreen(
                                             }
                                         },
                                         onItemLongClick = if (isPickerMode) null else {
-                                            { pressOffset ->
+                                            {
                                                 if (selectionMode) {
                                                     viewModel.toggleSelection(fileItem)
                                                 } else {
-                                                    menuOffset = pressOffset
                                                     actionTarget = fileItem
                                                 }
                                             }
                                         }
                                     )
 
-                                    // ---- 长按弹出式操作菜单 (跟随按压位置) ----
+                                    // ---- 长按弹出式操作菜单 (锚定条目包裹边缘) ----
                                     FileActionMenu(
                                         expanded = actionTarget?.path == fileItem.path,
                                         item = fileItem,
                                         isFavorite = fileItem.path in favorites,
-                                        offset = DpOffset(
-                                            x = menuOffset.x,
-                                            y = menuOffset.y - rowHeight
-                                        ),
+                                        // 条目圆角包裹有 8dp 横向 / 2dp 纵向外边距,
+                                        // 偏移后菜单从包裹边缘开始展开
+                                        offset = DpOffset(x = 8.dp, y = (-2).dp),
                                         onAction = { action ->
                                             when (action) {
                                                 FileAction.COPY ->
@@ -543,15 +542,15 @@ fun FileListScreen(
 // =============================================================================
 
 /** 长按文件弹出的操作项 */
-private enum class FileAction(val label: String) {
-    COPY("复制"),
-    CUT("剪切"),
-    DELETE("删除"),
-    RENAME("重命名"),
-    SHARE("分享"),
-    FAVORITE("收藏"),
-    PROPERTIES("属性"),
-    MULTI_SELECT("多选")
+private enum class FileAction(val labelRes: Int) {
+    COPY(R.string.action_copy),
+    CUT(R.string.action_cut),
+    DELETE(R.string.action_delete),
+    RENAME(R.string.action_rename),
+    SHARE(R.string.action_share),
+    FAVORITE(R.string.action_favorite),
+    PROPERTIES(R.string.action_properties),
+    MULTI_SELECT(R.string.action_multi_select)
 }
 
 @Composable
@@ -564,16 +563,19 @@ private fun FileActionMenu(
     onDismiss: () -> Unit
 ) {
     val actions = buildList {
-        add(FileAction.COPY.label to FileAction.COPY)
-        add(FileAction.CUT.label to FileAction.CUT)
-        add(FileAction.DELETE.label to FileAction.DELETE)
-        add(FileAction.RENAME.label to FileAction.RENAME)
-        if (!item.isDirectory) add(FileAction.SHARE.label to FileAction.SHARE)
+        add(FileAction.COPY.labelRes to FileAction.COPY)
+        add(FileAction.CUT.labelRes to FileAction.CUT)
+        add(FileAction.DELETE.labelRes to FileAction.DELETE)
+        add(FileAction.RENAME.labelRes to FileAction.RENAME)
+        if (!item.isDirectory) add(FileAction.SHARE.labelRes to FileAction.SHARE)
         if (item.isDirectory) {
-            add((if (isFavorite) "取消收藏" else "收藏") to FileAction.FAVORITE)
+            add(
+                (if (isFavorite) R.string.action_unfavorite else R.string.action_favorite)
+                    to FileAction.FAVORITE
+            )
         }
-        add(FileAction.PROPERTIES.label to FileAction.PROPERTIES)
-        add(FileAction.MULTI_SELECT.label to FileAction.MULTI_SELECT)
+        add(FileAction.PROPERTIES.labelRes to FileAction.PROPERTIES)
+        add(FileAction.MULTI_SELECT.labelRes to FileAction.MULTI_SELECT)
     }
 
     DropdownMenu(
@@ -581,11 +583,11 @@ private fun FileActionMenu(
         onDismissRequest = onDismiss,
         offset = offset
     ) {
-        actions.forEach { (label, action) ->
+        actions.forEach { (labelRes, action) ->
             DropdownMenuItem(
                 text = {
                     Text(
-                        text = label,
+                        text = stringResource(labelRes),
                         color = if (action == FileAction.DELETE)
                             MaterialTheme.colorScheme.error
                         else
@@ -641,14 +643,14 @@ private fun NormalTopBar(
                 IconButton(onClick = { onPickCancelled?.invoke() }) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "取消"
+                        contentDescription = stringResource(R.string.cancel)
                     )
                 }
             } else {
                 IconButton(onClick = onOpenDrawer) {
                     Icon(
                         imageVector = Icons.Filled.Menu,
-                        contentDescription = "菜单"
+                        contentDescription = stringResource(R.string.menu)
                     )
                 }
             }
@@ -657,20 +659,20 @@ private fun NormalTopBar(
             IconButton(onClick = onSearchClick) {
                 Icon(
                     imageVector = Icons.Filled.Search,
-                    contentDescription = "搜索"
+                    contentDescription = stringResource(R.string.search)
                 )
             }
             IconButton(onClick = onSortClick) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Sort,
-                    contentDescription = "排序"
+                    contentDescription = stringResource(R.string.sort_by)
                 )
             }
             Box {
                 IconButton(onClick = { onShowMoreMenuChange(true) }) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
-                        contentDescription = "更多"
+                        contentDescription = stringResource(R.string.more)
                     )
                 }
                 DropdownMenu(
@@ -678,7 +680,7 @@ private fun NormalTopBar(
                     onDismissRequest = { onShowMoreMenuChange(false) }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("刷新") },
+                        text = { Text(stringResource(R.string.refresh)) },
                         leadingIcon = {
                             Icon(Icons.Filled.Refresh, contentDescription = null)
                         },
@@ -688,14 +690,14 @@ private fun NormalTopBar(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("新建文件夹") },
+                        text = { Text(stringResource(R.string.create_folder)) },
                         onClick = {
                             onCreateFolder()
                             onShowMoreMenuChange(false)
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("新建文件") },
+                        text = { Text(stringResource(R.string.create_file)) },
                         onClick = {
                             onCreateFile()
                             onShowMoreMenuChange(false)
@@ -703,7 +705,12 @@ private fun NormalTopBar(
                     )
                     DropdownMenuItem(
                         text = {
-                            Text(if (showHidden) "隐藏隐藏文件" else "显示隐藏文件")
+                            Text(
+                                stringResource(
+                                    if (showHidden) R.string.hide_hidden_files
+                                    else R.string.show_hidden_files
+                                )
+                            )
                         },
                         onClick = {
                             onToggleShowHidden()
@@ -714,7 +721,7 @@ private fun NormalTopBar(
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
     )
 }
@@ -732,7 +739,7 @@ private fun SelectionTopBar(
     TopAppBar(
         title = {
             Text(
-                text = "已选 $count 项",
+                text = stringResource(R.string.selected_count, count),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -741,7 +748,7 @@ private fun SelectionTopBar(
             IconButton(onClick = onClose) {
                 Icon(
                     imageVector = Icons.Filled.Close,
-                    contentDescription = "退出多选"
+                    contentDescription = stringResource(R.string.exit_selection)
                 )
             }
         },
@@ -749,12 +756,15 @@ private fun SelectionTopBar(
             IconButton(onClick = onSelectAll) {
                 Icon(
                     imageVector = Icons.Filled.SelectAll,
-                    contentDescription = "全选"
+                    contentDescription = stringResource(R.string.select_all)
                 )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
         )
     )
 }
@@ -780,7 +790,7 @@ private fun SearchTopBar(
                 value = query,
                 onValueChange = onQueryChange,
                 singleLine = true,
-                placeholder = { Text("搜索当前目录及子目录") },
+                placeholder = { Text(stringResource(R.string.search_placeholder)) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester),
@@ -800,7 +810,7 @@ private fun SearchTopBar(
                         IconButton(onClick = { onQueryChange("") }) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
-                                contentDescription = "清空"
+                                contentDescription = stringResource(R.string.clear)
                             )
                         }
                     }
@@ -811,12 +821,12 @@ private fun SearchTopBar(
             IconButton(onClick = onClose) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "退出搜索"
+                    contentDescription = stringResource(R.string.exit_search)
                 )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
     )
 }
@@ -839,32 +849,30 @@ private fun SelectionActionBar(
     var showMenu by remember { mutableStateOf(false) }
     val singleItem = if (singleSelection) viewModel.selectedItems().firstOrNull() else null
 
-    Column {
-        HorizontalDivider(thickness = 0.5.dp)
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(vertical = 2.dp),
+                .padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            ActionBarItem(Icons.Filled.ContentCopy, "复制", onClick = onCopy)
-            ActionBarItem(Icons.Filled.ContentCut, "剪切", onClick = onCut)
-            ActionBarItem(Icons.Filled.Delete, "删除", onClick = onDelete)
+            ActionBarItem(Icons.Filled.ContentCopy, stringResource(R.string.action_copy), onClick = onCopy)
+            ActionBarItem(Icons.Filled.ContentCut, stringResource(R.string.action_cut), onClick = onCut)
+            ActionBarItem(Icons.Filled.Delete, stringResource(R.string.action_delete), onClick = onDelete)
             ActionBarItem(
-                Icons.Filled.DriveFileRenameOutline, "重命名",
+                Icons.Filled.DriveFileRenameOutline, stringResource(R.string.action_rename),
                 enabled = singleSelection, onClick = onRename
             )
-            ActionBarItem(Icons.Filled.Share, "分享", onClick = onShare)
+            ActionBarItem(Icons.Filled.Share, stringResource(R.string.action_share), onClick = onShare)
             Box {
-                ActionBarItem(Icons.Filled.MoreVert, "更多", onClick = { showMenu = true })
+                ActionBarItem(Icons.Filled.MoreVert, stringResource(R.string.more), onClick = { showMenu = true })
                 DropdownMenu(
                     expanded = showMenu,
                     onDismissRequest = { showMenu = false }
                 ) {
                     if (singleItem != null) {
                         DropdownMenuItem(
-                            text = { Text("属性") },
+                            text = { Text(stringResource(R.string.action_properties)) },
                             onClick = {
                                 onProperties()
                                 showMenu = false
@@ -874,8 +882,11 @@ private fun SelectionActionBar(
                             DropdownMenuItem(
                                 text = {
                                     Text(
-                                        if (viewModel.isFavorite(singleItem.path)) "取消收藏"
-                                        else "收藏"
+                                        stringResource(
+                                            if (viewModel.isFavorite(singleItem.path))
+                                                R.string.action_unfavorite
+                                            else R.string.action_favorite
+                                        )
                                     )
                                 },
                                 onClick = {
@@ -886,7 +897,7 @@ private fun SelectionActionBar(
                         }
                     } else {
                         DropdownMenuItem(
-                            text = { Text("属性 (仅单选可用)") },
+                            text = { Text(stringResource(R.string.properties_single_only)) },
                             enabled = false,
                             onClick = {}
                         )
@@ -908,8 +919,9 @@ private fun ActionBarItem(
     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
     Column(
         modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
@@ -928,7 +940,52 @@ private fun ActionBarItem(
 }
 
 // =============================================================================
-//  粘贴栏
+//  底部导航栏 (MT 风格: 上一步/下一步/主目录/新建文件夹/上一级)
+// =============================================================================
+@Composable
+private fun BottomNavBar(
+    canBack: Boolean,
+    canForward: Boolean,
+    atRoot: Boolean,
+    onBack: () -> Unit,
+    onForward: () -> Unit,
+    onHome: () -> Unit,
+    onCreateFolder: () -> Unit,
+    onNavigateUp: () -> Unit
+) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            ActionBarItem(
+                Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.nav_back),
+                enabled = canBack, onClick = onBack
+            )
+            ActionBarItem(
+                Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.nav_forward),
+                enabled = canForward, onClick = onForward
+            )
+            ActionBarItem(
+                Icons.Filled.Home, stringResource(R.string.nav_home),
+                enabled = !atRoot, onClick = onHome
+            )
+            ActionBarItem(
+                Icons.Filled.CreateNewFolder, stringResource(R.string.nav_create),
+                onClick = onCreateFolder
+            )
+            ActionBarItem(
+                Icons.Filled.ArrowUpward, stringResource(R.string.nav_up),
+                enabled = !atRoot, onClick = onNavigateUp
+            )
+        }
+    }
+}
+
+// =============================================================================
+//  粘贴栏 (MD3 悬浮卡片风格)
 // =============================================================================
 @Composable
 private fun PasteBar(
@@ -937,29 +994,35 @@ private fun PasteBar(
     onPaste: () -> Unit,
     onCancel: () -> Unit
 ) {
-    Column {
-        HorizontalDivider(thickness = 0.5.dp)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 2.dp
+    ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = if (isCut) Icons.Filled.ContentCut else Icons.Filled.ContentCopy,
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = (if (isCut) "待移动" else "待复制") + " $itemCount 项",
+                text = stringResource(
+                    if (isCut) R.string.pending_move else R.string.pending_copy,
+                    itemCount
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSecondaryContainer
             )
-            TextButton(onClick = onCancel) { Text("取消") }
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
             Spacer(modifier = Modifier.width(4.dp))
             Button(onClick = onPaste) {
                 Icon(
@@ -968,7 +1031,7 @@ private fun PasteBar(
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("粘贴到此处")
+                Text(stringResource(R.string.paste_here))
             }
         }
     }
@@ -983,13 +1046,21 @@ private fun EmptyPlaceholder(text: String, modifier: Modifier = Modifier) {
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(
-            imageVector = Icons.Filled.Folder,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .size(96.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.FolderOpen,
+                contentDescription = null,
+                modifier = Modifier.size(44.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
@@ -999,14 +1070,15 @@ private fun EmptyPlaceholder(text: String, modifier: Modifier = Modifier) {
 }
 
 // =============================================================================
-//  紧凑面包屑 (MT 风格)
+//  紧凑面包屑 (MD3 风格)
 // =============================================================================
 @Composable
 private fun BreadcrumbBar(
     currentPath: String,
     onPathClick: (String) -> Unit
 ) {
-    val segments = remember(currentPath) { buildPathSegments(currentPath) }
+    val internalStorage = stringResource(R.string.internal_storage)
+    val segments = remember(currentPath) { buildPathSegments(currentPath, internalStorage) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1017,30 +1089,38 @@ private fun BreadcrumbBar(
             Text(
                 text = name,
                 style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (index == segments.lastIndex)
+                    FontWeight.SemiBold
+                else
+                    FontWeight.Normal,
                 color = if (index == segments.lastIndex)
                     MaterialTheme.colorScheme.primary
                 else
                     MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.clickable { onPathClick(path) }
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onPathClick(path) }
+                    .padding(horizontal = 2.dp, vertical = 1.dp)
             )
             if (index < segments.lastIndex) {
-                Text(
-                    text = " / ",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(12.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             }
         }
     }
 }
 
-private fun buildPathSegments(path: String): List<Pair<String, String>> {
+private fun buildPathSegments(path: String, rootLabel: String): List<Pair<String, String>> {
     val segments = mutableListOf<Pair<String, String>>()
     val parts = path.split(File.separator).filter { it.isNotEmpty() }
     var accumulatedPath =
         if (path.startsWith(File.separator)) File.separator else ""
 
-    segments.add("内部存储" to FileManagerViewModel.STORAGE_ROOT)
+    segments.add(rootLabel to FileManagerViewModel.STORAGE_ROOT)
 
     for (part in parts) {
         accumulatedPath = if (accumulatedPath.endsWith(File.separator))
@@ -1055,33 +1135,6 @@ private fun buildPathSegments(path: String): List<Pair<String, String>> {
 }
 
 // =============================================================================
-//  返回上级目录行 (MT 风格)
-// =============================================================================
-@Composable
-private fun ParentDirectoryRow(onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = Icons.Filled.SubdirectoryArrowRight,
-            contentDescription = "返回上级",
-            modifier = Modifier.size(24.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = "..",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
-    }
-}
-
-// =============================================================================
 //  排序对话框
 // =============================================================================
 @Composable
@@ -1093,7 +1146,7 @@ private fun SortDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("排序方式") },
+        title = { Text(stringResource(R.string.sort_by)) },
         text = {
             Column {
                 SortMode.entries.forEach { mode ->
@@ -1101,13 +1154,22 @@ private fun SortDialog(
                     val arrow = if (isSelected) {
                         if (currentAscending) " ↑" else " ↓"
                     } else ""
-                    TextButton(
-                        onClick = { onModeSelected(mode) },
-                        modifier = Modifier.fillMaxWidth()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onModeSelected(mode) }
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = { onModeSelected(mode) }
+                        )
                         Text(
-                            text = mode.label + arrow,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            text = stringResource(mode.labelRes) + arrow,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                             color = if (isSelected)
                                 MaterialTheme.colorScheme.primary
                             else
@@ -1119,7 +1181,7 @@ private fun SortDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭")
+                Text(stringResource(R.string.close))
             }
         }
     )
