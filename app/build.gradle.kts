@@ -3,6 +3,21 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// 通过 git 生成版本信息
+fun gitOutput(vararg args: String): String =
+    providers.exec {
+        commandLine("git", *args)
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get().trim()
+
+// versionCode = 提交总数，随每次提交自增
+val gitCommitCount = gitOutput("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
+
+// versionName 优先使用 tag（如 v1.0 -> "1.0"、之后的提交 -> "1.0-3-g5047804"），无 tag 时回退
+val gitVersionName = gitOutput("describe", "--tags", "--dirty")
+    .removePrefix("v")
+    .ifEmpty { "1.0.$gitCommitCount-${gitOutput("rev-parse", "--short", "HEAD")}" }
+
 android {
     namespace = "me.huidoudour.file.manager"
     compileSdk {
@@ -13,19 +28,54 @@ android {
         applicationId = namespace
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = gitCommitCount
+        versionName = gitVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    buildTypes {
-        release {
-            optimization {
-                enable = false
+    val useSignKey = rootProject.hasProperty("storeFile") &&
+            rootProject.hasProperty("storePassword") &&
+            rootProject.hasProperty("keyAlias") &&
+            rootProject.hasProperty("keyPassword")
+
+    signingConfigs {
+        if (useSignKey) {
+            create("sign_key") {
+                storeFile = file(rootProject.property("storeFile") as String)
+                storePassword = rootProject.property("storePassword") as String
+                keyAlias = rootProject.property("keyAlias") as String
+                keyPassword = rootProject.property("keyPassword") as String
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = false
             }
         }
     }
+
+    buildTypes {
+        debug {
+            signingConfig = if (useSignKey) {
+                signingConfigs.getByName("sign_key")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+        }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            optimization {
+                enable = false
+            }
+            signingConfig = if (useSignKey) {
+                signingConfigs.getByName("sign_key")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11

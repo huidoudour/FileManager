@@ -73,8 +73,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import me.huidoudour.file.manager.model.FileItem
@@ -215,27 +218,6 @@ fun FileListScreen(
                 deleteTargets = null
             },
             onDismiss = { deleteTargets = null }
-        )
-    }
-
-    actionTarget?.let { target ->
-        FileActionDialog(
-            item = target,
-            isFavorite = target.path in favorites,
-            onAction = { action ->
-                when (action) {
-                    FileAction.COPY -> viewModel.copyToClipboard(listOf(target))
-                    FileAction.CUT -> viewModel.cutToClipboard(listOf(target))
-                    FileAction.DELETE -> deleteTargets = listOf(target)
-                    FileAction.RENAME -> renameTarget = target
-                    FileAction.SHARE -> onShareFiles?.invoke(listOf(target))
-                    FileAction.FAVORITE -> viewModel.toggleFavorite(target.path)
-                    FileAction.PROPERTIES -> viewModel.showProperties(target)
-                    FileAction.MULTI_SELECT -> viewModel.toggleSelection(target)
-                }
-                actionTarget = null
-            },
-            onDismiss = { actionTarget = null }
         )
     }
 
@@ -474,39 +456,144 @@ fun FileListScreen(
                                 items = displayedFiles,
                                 key = { _, item -> item.path }
                             ) { _, fileItem ->
-                                FileItemRow(
-                                    fileItem = fileItem,
-                                    viewModel = viewModel,
-                                    isSelected = selectedFile?.path == fileItem.path,
-                                    isChecked = fileItem.path in selectedPaths,
-                                    selectionMode = selectionMode,
-                                    isFavorite = fileItem.path in favorites,
-                                    onItemClick = {
-                                        when {
-                                            selectionMode ->
-                                                viewModel.toggleSelection(fileItem)
-                                            fileItem.isDirectory -> {
-                                                if (searching) viewModel.closeSearch()
-                                                viewModel.navigateToDirectory(fileItem)
-                                            }
-                                            else -> onFileSelected?.invoke(fileItem)
-                                        }
-                                    },
-                                    onItemLongClick = if (isPickerMode) null else {
-                                        {
-                                            if (selectionMode) {
-                                                viewModel.toggleSelection(fileItem)
-                                            } else {
-                                                actionTarget = fileItem
-                                            }
-                                        }
+                                // 长按菜单定位: 按下位置 + 行高 (DropdownMenu 默认锚在行底部)
+                                var menuOffset by remember { mutableStateOf(DpOffset.Zero) }
+                                var rowHeight by remember { mutableStateOf(0.dp) }
+                                val density = LocalDensity.current
+
+                                Box(
+                                    modifier = Modifier.onSizeChanged {
+                                        rowHeight = with(density) { it.height.toDp() }
                                     }
-                                )
+                                ) {
+                                    FileItemRow(
+                                        fileItem = fileItem,
+                                        viewModel = viewModel,
+                                        isSelected = selectedFile?.path == fileItem.path,
+                                        isChecked = fileItem.path in selectedPaths,
+                                        selectionMode = selectionMode,
+                                        isFavorite = fileItem.path in favorites,
+                                        onItemClick = {
+                                            when {
+                                                selectionMode ->
+                                                    viewModel.toggleSelection(fileItem)
+                                                fileItem.isDirectory -> {
+                                                    if (searching) viewModel.closeSearch()
+                                                    viewModel.navigateToDirectory(fileItem)
+                                                }
+                                                else -> onFileSelected?.invoke(fileItem)
+                                            }
+                                        },
+                                        onItemLongClick = if (isPickerMode) null else {
+                                            { pressOffset ->
+                                                if (selectionMode) {
+                                                    viewModel.toggleSelection(fileItem)
+                                                } else {
+                                                    menuOffset = pressOffset
+                                                    actionTarget = fileItem
+                                                }
+                                            }
+                                        }
+                                    )
+
+                                    // ---- 长按弹出式操作菜单 (跟随按压位置) ----
+                                    FileActionMenu(
+                                        expanded = actionTarget?.path == fileItem.path,
+                                        item = fileItem,
+                                        isFavorite = fileItem.path in favorites,
+                                        offset = DpOffset(
+                                            x = menuOffset.x,
+                                            y = menuOffset.y - rowHeight
+                                        ),
+                                        onAction = { action ->
+                                            when (action) {
+                                                FileAction.COPY ->
+                                                    viewModel.copyToClipboard(listOf(fileItem))
+                                                FileAction.CUT ->
+                                                    viewModel.cutToClipboard(listOf(fileItem))
+                                                FileAction.DELETE ->
+                                                    deleteTargets = listOf(fileItem)
+                                                FileAction.RENAME ->
+                                                    renameTarget = fileItem
+                                                FileAction.SHARE ->
+                                                    onShareFiles?.invoke(listOf(fileItem))
+                                                FileAction.FAVORITE ->
+                                                    viewModel.toggleFavorite(fileItem.path)
+                                                FileAction.PROPERTIES ->
+                                                    viewModel.showProperties(fileItem)
+                                                FileAction.MULTI_SELECT ->
+                                                    viewModel.toggleSelection(fileItem)
+                                            }
+                                            actionTarget = null
+                                        },
+                                        onDismiss = { actionTarget = null }
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+// =============================================================================
+//  长按弹出式操作菜单
+// =============================================================================
+
+/** 长按文件弹出的操作项 */
+private enum class FileAction(val label: String) {
+    COPY("复制"),
+    CUT("剪切"),
+    DELETE("删除"),
+    RENAME("重命名"),
+    SHARE("分享"),
+    FAVORITE("收藏"),
+    PROPERTIES("属性"),
+    MULTI_SELECT("多选")
+}
+
+@Composable
+private fun FileActionMenu(
+    expanded: Boolean,
+    item: FileItem,
+    isFavorite: Boolean,
+    offset: DpOffset,
+    onAction: (FileAction) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val actions = buildList {
+        add(FileAction.COPY.label to FileAction.COPY)
+        add(FileAction.CUT.label to FileAction.CUT)
+        add(FileAction.DELETE.label to FileAction.DELETE)
+        add(FileAction.RENAME.label to FileAction.RENAME)
+        if (!item.isDirectory) add(FileAction.SHARE.label to FileAction.SHARE)
+        if (item.isDirectory) {
+            add((if (isFavorite) "取消收藏" else "收藏") to FileAction.FAVORITE)
+        }
+        add(FileAction.PROPERTIES.label to FileAction.PROPERTIES)
+        add(FileAction.MULTI_SELECT.label to FileAction.MULTI_SELECT)
+    }
+
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        offset = offset
+    ) {
+        actions.forEach { (label, action) ->
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = label,
+                        color = if (action == FileAction.DELETE)
+                            MaterialTheme.colorScheme.error
+                        else
+                            MaterialTheme.colorScheme.onSurface
+                    )
+                },
+                onClick = { onAction(action) }
+            )
         }
     }
 }

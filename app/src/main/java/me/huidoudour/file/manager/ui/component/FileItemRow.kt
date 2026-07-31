@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,15 +35,22 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import coil.ImageLoader
 import coil.compose.AsyncImage
@@ -102,10 +111,13 @@ fun FileItemRow(
     selectionMode: Boolean = false,
     isFavorite: Boolean = false,
     onItemClick: () -> Unit,
-    onItemLongClick: (() -> Unit)? = null
+    onItemLongClick: ((DpOffset) -> Unit)? = null
 ) {
     val category = FileTypeUtil.getCategory(fileItem)
     val icon = fileIcon(category)
+
+    // 记录最后一次按下的位置 (相对行左上角), 供长按菜单定位
+    var pressOffset by remember { mutableStateOf(DpOffset.Zero) }
 
     val rowBg = when {
         isChecked -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
@@ -118,9 +130,23 @@ fun FileItemRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(rowBg)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(
+                            requireUnconsumed = false,
+                            pass = PointerEventPass.Initial
+                        )
+                        pressOffset = DpOffset(
+                            down.position.x.toDp(),
+                            down.position.y.toDp()
+                        )
+                    }
+                }
                 .combinedClickable(
                     onClick = onItemClick,
-                    onLongClick = onItemLongClick
+                    onLongClick = onItemLongClick?.let { callback ->
+                        { callback(pressOffset) }
+                    }
                 )
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically

@@ -41,6 +41,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:label="@string/dis_name"
             android:theme="@style/Theme.FileManager"
             android:windowSoftInputMode="adjustResize"
             android:launchMode="singleTask">
@@ -97,6 +98,10 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <meta-data
+            android:name="me.huidoudour.core.version"
+            android:value="39" />
     </application>
 
 </manifest>
