@@ -1,22 +1,31 @@
+@file:Suppress("DEPRECATION")
+
+import java.text.SimpleDateFormat
+import java.util.Date
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
 
-// 通过 git 生成版本信息
-fun gitOutput(vararg args: String): String =
-    providers.exec {
-        commandLine("git", *args)
-        isIgnoreExitValue = true
-    }.standardOutput.asText.get().trim()
+// ── Git 版本控制 ──
+val appBackVersion = 3
+val appBaseVersion = "26.1"
 
-// versionCode = 提交总数，随每次提交自增
-val gitCommitCount = gitOutput("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
+fun Project.gitCommitCount(): Int = try {
+    providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
+        .standardOutput.asText.get().trim().toInt()
+} catch (_: Exception) { appBackVersion }
 
-// versionName 优先使用 tag（如 v1.0 -> "1.0"、之后的提交 -> "1.0-3-g5047804"），无 tag 时回退
-val gitVersionName = gitOutput("describe", "--tags", "--dirty")
-    .removePrefix("v")
-    .ifEmpty { "1.0.$gitCommitCount-${gitOutput("rev-parse", "--short", "HEAD")}" }
+fun Project.gitHash(): String = try {
+    providers.exec { commandLine("git", "rev-parse", "--short=7", "HEAD") }
+        .standardOutput.asText.get().trim()
+} catch (_: Exception) {
+    SimpleDateFormat("MMddHHmm").format(Date())
+}
+
+val appVersionCode = gitCommitCount()
+val appVersionName = "${appBaseVersion}.${gitCommitCount()}.${gitHash()}"
 
 android {
     namespace = "me.huidoudour.file.manager"
@@ -28,8 +37,8 @@ android {
         applicationId = namespace
         minSdk = 24
         targetSdk = 37
-        versionCode = gitCommitCount
-        versionName = gitVersionName
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
