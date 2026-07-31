@@ -25,7 +25,7 @@ import me.huidoudour.file.manager.ui.component.FileListScreen
 import me.huidoudour.file.manager.ui.theme.FileManagerTheme
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
-import android.content.pm.ResolveInfo
+import androidx.core.net.toUri
 
 class MainActivity : ComponentActivity() {
 
@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 setResult(RESULT_OK, resultIntent)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // 降级：直接用文件路径的 Uri
                 val uri = Uri.fromFile(file)
                 val resultIntent = Intent().apply {
@@ -198,7 +198,7 @@ class MainActivity : ComponentActivity() {
 
         // APK 文件：仅通过指定安装器安装
         if (fileItem.extension.equals("apk", ignoreCase = true)) {
-            installApk(file, fileItem)
+            installApk(file)
             return
         }
 
@@ -230,7 +230,7 @@ class MainActivity : ComponentActivity() {
     /**
      * 使用指定安装器 io.github.huidoudour.Installer 安装 APK
      */
-    private fun installApk(file: File, fileItem: FileItem) {
+    private fun installApk(file: File) {
         try {
             // 先确认安装器包是否存在
             try {
@@ -307,7 +307,7 @@ class MainActivity : ComponentActivity() {
                 // Android 11+ 全文件访问权限
                 if (!Environment.isExternalStorageManager()) {
                     val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                        data = Uri.parse("package:$packageName")
+                        data = "package:$packageName".toUri()
                     }
                     startActivity(intent)
                 }

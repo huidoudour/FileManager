@@ -137,7 +137,7 @@ fun FileItemRow(
     isFavorite: Boolean = false,
     isMenuShown: Boolean = false,
     onItemClick: () -> Unit,
-    onItemLongClick: (() -> Unit)? = null
+    onItemLongClick: ((Offset) -> Unit)? = null
 ) {
     val category = FileTypeUtil.getCategory(fileItem)
     val icon = fileIcon(category)
@@ -187,7 +187,7 @@ fun FileItemRow(
                     interactionSource = interactionSource,
                     indication = LocalIndication.current,
                     onClick = onItemClick,
-                    onLongClick = onItemLongClick
+                    onLongClick = onItemLongClick?.let { cb -> { cb(pressPosition) } }
                 )
                 .padding(horizontal = 10.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically

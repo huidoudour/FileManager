@@ -102,7 +102,7 @@
     <string name="category_other">其他</string>
 
     <!-- 抽屉 -->
-    <string name="drawer_title">文件管理器</string>
+    <string name="drawer_title">文件管理</string>
     <string name="drawer_subtitle">浏览本地文件</string>
     <string name="section_locations">位置</string>
     <string name="section_favorites">收藏</string>

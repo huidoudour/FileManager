@@ -1,12 +1,13 @@
 package me.huidoudour.file.manager.ui.component
 
-import android.app.Activity
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -83,13 +85,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
@@ -136,32 +148,29 @@ fun FileListScreen(
 
     var showSortDialog by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
-    // true=新建文件夹, false=新建文件, null=不显示
     var createDialogIsFolder by remember { mutableStateOf<Boolean?>(null) }
     var renameTarget by remember { mutableStateOf<FileItem?>(null) }
     var deleteTargets by remember { mutableStateOf<List<FileItem>?>(null) }
-    // 长按弹出操作对话框的目标文件
     var actionTarget by remember { mutableStateOf<FileItem?>(null) }
+    var actionPressOffset by remember { mutableStateOf(Offset.Zero) }
+    var blockItemClicks by remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val activity = LocalContext.current as? Activity
-    // 主目录下连续两次返回退出: 记录上次返回时间
+    val activity = LocalActivity.current
     var lastBackPressTime by remember { mutableStateOf(0L) }
 
     val selectionMode = selectedPaths.isNotEmpty()
     val searching = isSearchActive && searchQuery.isNotBlank()
     val displayedFiles = if (searching) searchResults else files
 
-    // 当前目录名
     val internalStorageLabel = stringResource(R.string.internal_storage)
     val currentDirName = remember(currentPath) {
         val name = File(currentPath).name
         if (name.isEmpty()) internalStorageLabel else name
     }
 
-    // ==================== 轻提示 ====================
     LaunchedEffect(toastMessage) {
         toastMessage?.let {
             snackbarHostState.showSnackbar(it)
@@ -169,7 +178,6 @@ fun FileListScreen(
         }
     }
 
-    // ==================== 返回键处理 ====================
     val pressBackHint = stringResource(R.string.press_back_again)
     BackHandler(enabled = true) {
         when {
@@ -178,7 +186,6 @@ fun FileListScreen(
             isSearchActive -> viewModel.closeSearch()
             isPickerMode && canGoBack -> onPickCancelled?.invoke()
             else -> {
-                // 子目录: 返回上一级; 主目录: 两次返回退出应用
                 if (!viewModel.navigateUp()) {
                     val now = System.currentTimeMillis()
                     if (now - lastBackPressTime < 2000L) {
@@ -194,7 +201,6 @@ fun FileListScreen(
         }
     }
 
-    // ==================== 对话框 ====================
     errorMessage?.let { error ->
         AlertDialog(
             onDismissRequest = { viewModel.clearError() },
@@ -275,7 +281,6 @@ fun FileListScreen(
         )
     }
 
-    // ==================== 主体: 抽屉 + Scaffold ====================
     ModalNavigationDrawer(
         drawerState = drawerState,
         gesturesEnabled = !isPickerMode && (drawerState.isOpen || (!selectionMode && !isSearchActive)),
@@ -333,7 +338,6 @@ fun FileListScreen(
             },
             bottomBar = {
                 Column {
-                    // ---- 多选操作栏 ----
                     if (selectionMode && !isPickerMode) {
                         SelectionActionBar(
                             singleSelection = selectedPaths.size == 1,
@@ -362,7 +366,6 @@ fun FileListScreen(
                         )
                     }
 
-                    // ---- 粘贴栏 ----
                     if (clipboard != null && !selectionMode && !isPickerMode) {
                         PasteBar(
                             itemCount = clipboard!!.items.size,
@@ -372,7 +375,6 @@ fun FileListScreen(
                         )
                     }
 
-                    // ---- 选取模式确认栏 ----
                     AnimatedVisibility(
                         visible = isPickerMode && selectedFile != null,
                         enter = fadeIn(),
@@ -410,7 +412,6 @@ fun FileListScreen(
                         }
                     }
 
-                    // ---- MT 风格底部导航栏 ----
                     if (!isPickerMode && !selectionMode && !isSearchActive) {
                         BottomNavBar(
                             canBack = canNavBack,
@@ -465,7 +466,22 @@ fun FileListScreen(
                                 items = displayedFiles,
                                 key = { _, item -> item.path }
                             ) { _, fileItem ->
-                                Box {
+                                val anchorState =
+                                    remember { mutableStateOf(IntRect.Zero) }
+
+                                Box(
+                                    modifier = Modifier.onGloballyPositioned { coordinates ->
+                                        anchorState.value =
+                                            coordinates.boundsInWindow().let { r ->
+                                                IntRect(
+                                                    r.left.roundToInt(),
+                                                    r.top.roundToInt(),
+                                                    r.right.roundToInt(),
+                                                    r.bottom.roundToInt()
+                                                )
+                                            }
+                                    }
+                                ) {
                                     FileItemRow(
                                         fileItem = fileItem,
                                         viewModel = viewModel,
@@ -475,35 +491,42 @@ fun FileListScreen(
                                         isFavorite = fileItem.path in favorites,
                                         isMenuShown = actionTarget?.path == fileItem.path,
                                         onItemClick = {
-                                            when {
-                                                selectionMode ->
-                                                    viewModel.toggleSelection(fileItem)
-                                                fileItem.isDirectory -> {
-                                                    if (searching) viewModel.closeSearch()
-                                                    viewModel.navigateToDirectory(fileItem)
+                                            if (blockItemClicks) {
+                                                blockItemClicks = false
+                                            } else {
+                                                when {
+                                                    selectionMode ->
+                                                        viewModel.toggleSelection(fileItem)
+                                                    fileItem.isDirectory -> {
+                                                        if (searching) viewModel.closeSearch()
+                                                        viewModel.navigateToDirectory(fileItem)
+                                                    }
+                                                    else -> onFileSelected?.invoke(fileItem)
                                                 }
-                                                else -> onFileSelected?.invoke(fileItem)
                                             }
                                         },
-                                        onItemLongClick = if (isPickerMode) null else {
-                                            {
-                                                if (selectionMode) {
-                                                    viewModel.toggleSelection(fileItem)
-                                                } else {
-                                                    actionTarget = fileItem
-                                                }
+                                        onItemLongClick = if (isPickerMode) null else { pressOffset ->
+                                            if (blockItemClicks) {
+                                                blockItemClicks = false
+                                            } else if (selectionMode) {
+                                                viewModel.toggleSelection(fileItem)
+                                            } else {
+                                                actionPressOffset = pressOffset
+                                                actionTarget = fileItem
                                             }
                                         }
                                     )
 
-                                    // ---- 长按弹出式操作菜单 (锚定条目包裹边缘) ----
+                                    val pressWindowPoint = IntOffset(
+                                        (anchorState.value.left + actionPressOffset.x).roundToInt(),
+                                        (anchorState.value.top + actionPressOffset.y).roundToInt()
+                                    )
+
                                     FileActionMenu(
                                         expanded = actionTarget?.path == fileItem.path,
                                         item = fileItem,
                                         isFavorite = fileItem.path in favorites,
-                                        // 条目圆角包裹有 8dp 横向 / 2dp 纵向外边距,
-                                        // 偏移后菜单从包裹边缘开始展开
-                                        offset = DpOffset(x = 8.dp, y = (-2).dp),
+                                        anchorPoint = pressWindowPoint,
                                         onAction = { action ->
                                             when (action) {
                                                 FileAction.COPY ->
@@ -525,7 +548,9 @@ fun FileListScreen(
                                             }
                                             actionTarget = null
                                         },
-                                        onDismiss = { actionTarget = null }
+                                        onDismiss = {
+                                            actionTarget = null
+                                        }
                                     )
                                 }
                             }
@@ -533,15 +558,28 @@ fun FileListScreen(
                     }
                 }
             }
+
+            if (actionTarget != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = {
+                                actionTarget = null
+                            }
+                        )
+                )
+            }
         }
     }
 }
 
 // =============================================================================
-//  长按弹出式操作菜单
+//  长按弹出式操作菜单 (Popup 显式定位)
 // =============================================================================
 
-/** 长按文件弹出的操作项 */
 private enum class FileAction(val labelRes: Int) {
     COPY(R.string.action_copy),
     CUT(R.string.action_cut),
@@ -558,10 +596,12 @@ private fun FileActionMenu(
     expanded: Boolean,
     item: FileItem,
     isFavorite: Boolean,
-    offset: DpOffset,
+    anchorPoint: IntOffset,
     onAction: (FileAction) -> Unit,
     onDismiss: () -> Unit
 ) {
+    if (!expanded) return
+
     val actions = buildList {
         add(FileAction.COPY.labelRes to FileAction.COPY)
         add(FileAction.CUT.labelRes to FileAction.CUT)
@@ -578,28 +618,73 @@ private fun FileActionMenu(
         add(FileAction.MULTI_SELECT.labelRes to FileAction.MULTI_SELECT)
     }
 
-    DropdownMenu(
-        expanded = expanded,
+    val density = LocalDensity.current
+    val popupPositionProvider = remember(anchorPoint) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(
+                popupAnchorBounds: IntRect,
+                windowSize: IntSize,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize
+            ): IntOffset {
+                val offsetPx = with(density) { 8.dp.roundToPx() }
+                val marginPx = with(density) { 4.dp.roundToPx() }
+
+                // 优先在点击位置下方显示，水平居中于点击点
+                var x = anchorPoint.x - popupContentSize.width / 2
+                var y = anchorPoint.y + offsetPx
+
+                // 下方放不下则翻到上方
+                if (y + popupContentSize.height > windowSize.height - marginPx) {
+                    y = anchorPoint.y - popupContentSize.height - offsetPx
+                    if (y < marginPx) y = marginPx
+                }
+
+                // 水平 clamp
+                if (x + popupContentSize.width > windowSize.width) {
+                    x = (windowSize.width - popupContentSize.width).coerceAtLeast(0)
+                }
+                if (x < marginPx) x = marginPx
+
+                return IntOffset(x, y)
+            }
+        }
+    }
+
+    Popup(
         onDismissRequest = onDismiss,
-        offset = offset
+        popupPositionProvider = popupPositionProvider,
+        properties = PopupProperties(focusable = true)
     ) {
-        actions.forEach { (labelRes, action) ->
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        text = stringResource(labelRes),
-                        color = if (action == FileAction.DELETE)
-                            MaterialTheme.colorScheme.error
-                        else
-                            MaterialTheme.colorScheme.onSurface
-                    )
-                },
-                onClick = { onAction(action) }
-            )
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            tonalElevation = 3.dp,
+            shadowElevation = 8.dp
+        ) {
+            Column {
+                actions.forEach { (labelRes, action) ->
+                    Row(
+                        modifier = Modifier
+                            .defaultMinSize(minWidth = 180.dp)
+                            .clickable { onAction(action) }
+                            .padding(horizontal = 12.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(labelRes),
+                            color = if (action == FileAction.DELETE)
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+            }
         }
     }
 }
-
 // =============================================================================
 //  普通模式顶栏
 // =============================================================================
@@ -940,7 +1025,7 @@ private fun ActionBarItem(
 }
 
 // =============================================================================
-//  底部导航栏 (MT 风格: 上一步/下一步/主目录/新建文件夹/上一级)
+//  底部导航栏 (MT 风格)
 // =============================================================================
 @Composable
 private fun BottomNavBar(
