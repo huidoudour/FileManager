@@ -320,15 +320,21 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         val parts = path.split(File.separator).filter { it.isNotEmpty() }
         var accumulatedPath =
             if (path.startsWith(File.separator)) File.separator else ""
-        // 存储根显示为 "内部存储"
-        segments.add(str(R.string.internal_storage) to STORAGE_ROOT)
         for (part in parts) {
             accumulatedPath = if (accumulatedPath.endsWith(File.separator))
                 accumulatedPath + part
             else
                 accumulatedPath + File.separator + part
-            if (accumulatedPath == STORAGE_ROOT) continue
-            segments.add(part to accumulatedPath)
+
+            // 跳过存储根上方的系统路径（如 /storage、/storage/emulated），这些路径没有读取权限
+            if (accumulatedPath != STORAGE_ROOT &&
+                !accumulatedPath.startsWith(STORAGE_ROOT + File.separator))
+                continue
+
+            val displayName = if (accumulatedPath == STORAGE_ROOT)
+                str(R.string.internal_storage)
+            else part
+            segments.add(displayName to accumulatedPath)
         }
         return segments
     }

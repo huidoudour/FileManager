@@ -1223,15 +1223,20 @@ private fun buildPathSegments(path: String, rootLabel: String): List<Pair<String
     var accumulatedPath =
         if (path.startsWith(File.separator)) File.separator else ""
 
-    segments.add(rootLabel to FileManagerViewModel.STORAGE_ROOT)
-
     for (part in parts) {
         accumulatedPath = if (accumulatedPath.endsWith(File.separator))
             accumulatedPath + part
         else
             accumulatedPath + File.separator + part
-        if (accumulatedPath == FileManagerViewModel.STORAGE_ROOT) continue
-        val displayName = if (part.length > 16) part.take(13) + ".." else part
+
+        // 跳过存储根上方的系统路径（如 /storage、/storage/emulated），这些路径没有读取权限
+        if (accumulatedPath != FileManagerViewModel.STORAGE_ROOT &&
+            !accumulatedPath.startsWith(FileManagerViewModel.STORAGE_ROOT + File.separator))
+            continue
+
+        val displayName = if (accumulatedPath == FileManagerViewModel.STORAGE_ROOT) rootLabel
+            else if (part.length > 16) part.take(13) + ".."
+            else part
         segments.add(displayName to accumulatedPath)
     }
     return segments
