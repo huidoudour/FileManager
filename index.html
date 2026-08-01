@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FileManager - 轻量级 Android 文件管理器</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="nav" role="navigation" aria-label="导航">
+    <a href="#features">功能特性</a>
+    <a href="#tech">技术栈</a>
+    <a href="#build">构建</a>
+</nav>
+
+<main>
+    <!-- Hero -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-icon" aria-hidden="true">FM</div>
+            <h1>FileManager</h1>
+            <p>一个使用 Kotlin + Jetpack Compose 编写的轻量级 Android 文件管理器</p>
+            <div class="hero-tags">
+                <span class="tag">文件管理</span>
+                <span class="tag">Jetpack Compose</span>
+                <span class="tag tag-outline">Material 3</span>
+                <span class="tag tag-outline">开源</span>
+            </div>
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- Features -->
+    <section class="section" id="features">
+        <div class="container">
+            <h2 class="section-title">功能特性</h2>
+            <div class="features">
+                <div class="feature-card">
+                    <h3>📂 文件浏览</h3>
+                    <p>面包屑导航、路径记忆，支持按名称 / 大小 / 日期 / 类型多种排序方式</p>
+                </div>
+                <div class="feature-card">
+                    <h3>✂️ 文件操作</h3>
+                    <p>复制、剪切、粘贴（含冲突处理）、删除、重命名、新建文件 / 文件夹，支持多选批量操作</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🔍 深度搜索</h3>
+                    <p>搜索当前目录及所有子目录，快速定位目标文件</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🖼️ 媒体预览</h3>
+                    <p>基于 Coil 加载图片 / 视频缩略图，直观预览媒体内容</p>
+                </div>
+                <div class="feature-card">
+                    <h3>⭐ 收藏与快捷入口</h3>
+                    <p>收藏常用目录，侧边栏提供下载、相机、图片等快捷入口，一键跳转</p>
+                </div>
+                <div class="feature-card">
+                    <h3>👁️ 属性与控制</h3>
+                    <p>文件属性详情、文件夹大小计算、显示 / 隐藏隐藏文件</p>
+                </div>
+                <div class="feature-card">
+                    <h3>📤 分享与调用</h3>
+                    <p>分享文件到其他应用，支持被其他 App 调起选取文件（GET_CONTENT / OPEN_DOCUMENT / PICK）</p>
+                </div>
+                <div class="feature-card">
+                    <h3>📦 APK 安装</h3>
+                    <p>APK 文件通过 io.github.huidoudour.Installer 一键安装</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- Tech Stack -->
+    <section class="section" id="tech">
+        <div class="container">
+            <h2 class="section-title">技术栈</h2>
+            <div class="badge-list">
+                <span class="badge"><span class="badge-dot"></span>Kotlin + Jetpack Compose</span>
+                <span class="badge"><span class="badge-dot"></span>Material 3</span>
+                <span class="badge"><span class="badge-dot"></span>MVVM (ViewModel + StateFlow)</span>
+                <span class="badge"><span class="badge-dot"></span>Coil</span>
+                <span class="badge"><span class="badge-dot"></span>minSdk 24</span>
+                <span class="badge"><span class="badge-dot"></span>targetSdk 37</span>
+                <span class="badge"><span class="badge-dot"></span>compileSdk 37</span>
+            </div>
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- Build -->
+    <section class="section" id="build">
+        <div class="container">
+            <h2 class="section-title">构建</h2>
+            <div class="feature-card" style="padding:16px 20px">
+                <p style="font-size:.875rem;color:var(--text-secondary);margin-bottom:8px">环境要求：JDK 11+、Android SDK 37</p>
+                <pre class="code-block">./gradlew :app:assembleDebug</pre>
+            </div>
+        </div>
+    </section>
+</main>
+
+<hr class="divider">
+
+<footer class="footer">
+    <div class="container">
+        <p>
+            <a href="https://github.com/huidoudour/FileManager" target="_blank" rel="noopener">GitHub</a>
+            &nbsp;·&nbsp;
+            <a href="https://github.com/huidoudour/FileManager/blob/main/LICENSE" target="_blank" rel="noopener">MIT</a>
+        </p>
+        <p style="margin-top:8px">FileManager &copy; 2026</p>
+    </div>
+</footer>
+
+<script src="js/main.js" defer></script>
+</body>
+</html>
