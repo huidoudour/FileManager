@@ -954,7 +954,8 @@ private fun SelectionActionBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
+                .padding(vertical = 4.dp)
+                .padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             ActionBarItem(Icons.Filled.ContentCopy, stringResource(R.string.action_copy), onClick = onCopy)
@@ -1058,7 +1059,8 @@ private fun BottomNavBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
+                .padding(vertical = 4.dp)
+                .padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             ActionBarItem(
@@ -1098,7 +1100,7 @@ private fun PasteBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 20.dp),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
         tonalElevation = 2.dp
