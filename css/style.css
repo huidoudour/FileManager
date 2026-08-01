@@ -165,6 +165,27 @@ body {
     color: var(--text-secondary);
 }
 
+.feature-card.tip {
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+
+.feature-card.tip p {
+    font-size: .9rem;
+    color: var(--text);
+    text-align: center;
+}
+
+.feature-card.tip a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.feature-card.tip a:hover {
+    text-decoration: underline;
+}
+
 /* ===== Badge List ===== */
 .badge-list {
     display: flex;
