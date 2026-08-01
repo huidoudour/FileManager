@@ -166,13 +166,8 @@ body {
 }
 
 .feature-card.tip {
-    border-color: var(--accent);
     background: var(--accent-light);
-}
-
-.feature-card.tip p {
-    font-size: .9rem;
-    color: var(--text);
+    border-style: dashed;
     text-align: center;
 }
 
