@@ -121,8 +121,7 @@ fun FileListScreen(
     onFileSelected: ((FileItem) -> Unit)? = null,
     onPickConfirmed: ((FileItem) -> Unit)? = null,
     onPickCancelled: (() -> Unit)? = null,
-    onShareFiles: ((List<FileItem>) -> Unit)? = null,
-    canGoBack: Boolean = false
+    onShareFiles: ((List<FileItem>) -> Unit)? = null
 ) {
     val currentPath by viewModel.currentPath.collectAsState()
     val files by viewModel.files.collectAsState()
@@ -186,7 +185,11 @@ fun FileListScreen(
             drawerState.isOpen -> scope.launch { drawerState.close() }
             selectionMode -> viewModel.clearSelection()
             isSearchActive -> viewModel.closeSearch()
-            isPickerMode && canGoBack -> onPickCancelled?.invoke()
+            isPickerMode -> {
+                if (!viewModel.navigateUp()) {
+                    onPickCancelled?.invoke()
+                }
+            }
             else -> {
                 if (!viewModel.navigateUp()) {
                     val now = System.currentTimeMillis()
@@ -326,7 +329,11 @@ fun FileListScreen(
                             showHidden = showHidden,
                             onShowMoreMenuChange = { showMoreMenu = it },
                             onOpenDrawer = { scope.launch { drawerState.open() } },
-                            onPickCancelled = onPickCancelled,
+                            onNavigateBack = {
+                                if (!viewModel.navigateUp()) {
+                                    onPickCancelled?.invoke()
+                                }
+                            },
                             onPathClick = { path -> viewModel.loadDirectory(path) },
                             onSearchClick = { viewModel.openSearch() },
                             onSortClick = { showSortDialog = true },
@@ -714,7 +721,7 @@ private fun NormalTopBar(
     showHidden: Boolean,
     onShowMoreMenuChange: (Boolean) -> Unit,
     onOpenDrawer: () -> Unit,
-    onPickCancelled: (() -> Unit)?,
+    onNavigateBack: (() -> Unit)?,
     onPathClick: (String) -> Unit,
     onSearchClick: () -> Unit,
     onSortClick: () -> Unit,
@@ -741,7 +748,7 @@ private fun NormalTopBar(
         },
         navigationIcon = {
             if (isPickerMode) {
-                IconButton(onClick = { onPickCancelled?.invoke() }) {
+                IconButton(onClick = { onNavigateBack?.invoke() }) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.cancel)

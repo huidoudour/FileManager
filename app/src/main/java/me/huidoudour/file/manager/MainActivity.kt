@@ -82,8 +82,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onShareFiles = { files ->
                         shareFiles(files)
-                    },
-                    canGoBack = isPickerMode
+                    }
                 )
             }
         }
