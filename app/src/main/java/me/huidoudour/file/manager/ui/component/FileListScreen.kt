@@ -140,6 +140,8 @@ fun FileListScreen(
     val searchResults by viewModel.searchResults.collectAsState()
     val isSearchLoading by viewModel.isSearchLoading.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
+    val pinnedFolders by viewModel.pinnedFolders.collectAsState()
+    val folderSizeCache by viewModel.folderSizeCache.collectAsState()  // 触发重组使 FileItemRow 感知缓存更新
     val toastMessage by viewModel.toastMessage.collectAsState()
     val propertiesTarget by viewModel.propertiesTarget.collectAsState()
     val propertiesStats by viewModel.propertiesStats.collectAsState()
@@ -526,6 +528,7 @@ fun FileListScreen(
                                         expanded = actionTarget?.path == fileItem.path,
                                         item = fileItem,
                                         isFavorite = fileItem.path in favorites,
+                                        isPinned = fileItem.path in pinnedFolders,
                                         anchorPoint = pressWindowPoint,
                                         onAction = { action ->
                                             when (action) {
@@ -541,6 +544,10 @@ fun FileListScreen(
                                                     onShareFiles?.invoke(listOf(fileItem))
                                                 FileAction.FAVORITE ->
                                                     viewModel.toggleFavorite(fileItem.path)
+                                                FileAction.PIN_SIZE ->
+                                                    viewModel.togglePinFolder(fileItem.path)
+                                                FileAction.REFRESH_SIZE ->
+                                                    viewModel.refreshFolderSize(fileItem.path)
                                                 FileAction.PROPERTIES ->
                                                     viewModel.showProperties(fileItem)
                                                 FileAction.MULTI_SELECT ->
@@ -587,6 +594,8 @@ private enum class FileAction(val labelRes: Int) {
     RENAME(R.string.action_rename),
     SHARE(R.string.action_share),
     FAVORITE(R.string.action_favorite),
+    PIN_SIZE(R.string.action_pin_size),
+    REFRESH_SIZE(R.string.action_refresh_size),
     PROPERTIES(R.string.action_properties),
     MULTI_SELECT(R.string.action_multi_select)
 }
@@ -596,6 +605,7 @@ private fun FileActionMenu(
     expanded: Boolean,
     item: FileItem,
     isFavorite: Boolean,
+    isPinned: Boolean,
     anchorPoint: IntOffset,
     onAction: (FileAction) -> Unit,
     onDismiss: () -> Unit
@@ -613,6 +623,12 @@ private fun FileActionMenu(
                 (if (isFavorite) R.string.action_unfavorite else R.string.action_favorite)
                     to FileAction.FAVORITE
             )
+            if (isPinned) {
+                add(R.string.action_refresh_size to FileAction.REFRESH_SIZE)
+                add(R.string.action_unpin_size to FileAction.PIN_SIZE)
+            } else {
+                add(R.string.action_pin_size to FileAction.PIN_SIZE)
+            }
         }
         add(FileAction.PROPERTIES.labelRes to FileAction.PROPERTIES)
         add(FileAction.MULTI_SELECT.labelRes to FileAction.MULTI_SELECT)

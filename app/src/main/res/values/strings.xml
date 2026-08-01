@@ -118,6 +118,15 @@
     <string name="remove_favorite">移除收藏</string>
     <string name="favorite_added">已收藏</string>
 
+    <!-- 文件夹大小 Pin -->
+    <string name="action_pin_size">计算大小</string>
+    <string name="action_unpin_size">取消计算</string>
+    <string name="action_refresh_size">刷新大小</string>
+    <string name="pin_added">已标记计算文件夹大小</string>
+    <string name="pin_removed">已取消计算文件夹大小</string>
+    <string name="pin_calculating">计算中…</string>
+    <string name="pin_stale">(需刷新)</string>
+
     <!-- ViewModel 提示消息 -->
     <string name="dir_not_accessible">目录不存在或无法访问: %1$s</string>
     <string name="no_read_permission">没有读取权限: %1$s</string>

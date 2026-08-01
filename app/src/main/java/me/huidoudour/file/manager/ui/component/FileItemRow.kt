@@ -260,9 +260,19 @@ fun FileItemRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = if (fileItem.isDirectory) "--" else FileItem.formatSize(fileItem.size),
+                        text = if (fileItem.isDirectory) {
+                            val cache = viewModel.getCachedFolderSize(fileItem.path)
+                            when {
+                                cache != null -> FileItem.formatSize(cache.size)
+                                viewModel.isPinned(fileItem.path) -> stringResource(R.string.pin_calculating)
+                                else -> "--"
+                            }
+                        } else FileItem.formatSize(fileItem.size),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (fileItem.isDirectory && viewModel.isPinned(fileItem.path))
+                            MaterialTheme.colorScheme.tertiary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

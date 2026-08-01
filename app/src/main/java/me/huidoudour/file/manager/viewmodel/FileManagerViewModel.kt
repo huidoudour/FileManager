@@ -55,6 +55,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         private const val KEY_LAST_PATH = "last_path"
         private const val KEY_SHOW_HIDDEN = "show_hidden"
         private const val KEY_FAVORITES = "favorites"
+        private const val KEY_PINNED_FOLDERS = "pinned_folders"
+        private const val KEY_SIZE_CACHE = "size_cache"
         /** 搜索结果上限 */
         private const val MAX_SEARCH_RESULTS = 300
     }
@@ -125,6 +127,16 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     private val _favorites = MutableStateFlow(loadFavorites())
     val favorites: StateFlow<List<String>> = _favorites.asStateFlow()
 
+    /** 已标记计算大小的文件夹路径集合 */
+    private val _pinnedFolders = MutableStateFlow(loadPinnedFolders())
+    val pinnedFolders: StateFlow<Set<String>> = _pinnedFolders.asStateFlow()
+
+    /** 文件夹大小缓存 (路径 -> 包含总字节数的 DirStats) */
+    private val _folderSizeCache = MutableStateFlow<Map<String, DirStats>>(emptyMap())
+    val folderSizeCache: StateFlow<Map<String, DirStats>> = _folderSizeCache.asStateFlow()
+
+    private var sizeComputeJob: Job? = null
+
     /** 轻提示消息 (Snackbar) */
     private val _toastMessage = MutableStateFlow<String?>(null)
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
@@ -152,8 +164,13 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     private var _pickerMode = false
 
     init {
-        val startPath = getSavedPath()
-        loadDirectory(startPath, recordHistory = false)
+        // 主线程仅派发，I/O 完全在后台
+        viewModelScope.launch(Dispatchers.IO) {
+            val startPath = getSavedPath()
+            // 并行: 加载目录 + 恢复 Pin 缓存，互不阻塞
+            launch { restoreSizeCache() }
+            loadDirectory(startPath, recordHistory = false)
+        }
     }
 
     // --- 公开方法 ---
@@ -472,6 +489,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             _toastMessage.value =
                 if (failed == 0) str(R.string.operation_done)
                 else str(R.string.operation_failed_items, failed)
+            // Pin 缓存失效: 目标目录
+            invalidateAndRecomputeAffected(_currentPath.value)
             refresh()
         }
     }
@@ -497,6 +516,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             _toastMessage.value =
                 if (failed == 0) str(R.string.deleted_items, items.size)
                 else str(R.string.delete_failed_items, failed)
+            // Pin 缓存失效: 所删除项的父目录
+            items.map { it.parentPath }.distinct()
+                .forEach { invalidateAndRecomputeAffected(it) }
             refresh()
         }
     }
@@ -519,6 +541,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
             clearSelection()
+            // Pin 缓存失效: 重命名项的父目录
+            invalidateAndRecomputeAffected(item.parentPath)
             refresh()
         }
     }
@@ -547,6 +571,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                         if (ok) str(R.string.created_item, name) else str(R.string.create_failed)
                 }
             }
+            // Pin 缓存失效: 当前目录
+            invalidateAndRecomputeAffected(_currentPath.value)
             refresh()
         }
     }
@@ -630,6 +656,144 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         prefs.edit().putStringSet(KEY_FAVORITES, current).apply()
         _favorites.value = current.sortedBy { File(it).name.lowercase() }
         if (added) _toastMessage.value = str(R.string.favorite_added)
+    }
+
+    // =========================================================================
+    //  Pin 文件夹大小缓存
+    // =========================================================================
+
+    /**
+     * 缓存格式: 每行 "path<TAB>size<TAB>fileCount<TAB>dirCount<TAB>cachedAt(LastModified)"
+     */
+    private fun loadPinnedFolders(): Set<String> =
+        prefs.getStringSet(KEY_PINNED_FOLDERS, emptySet()).orEmpty()
+
+    fun isPinned(path: String): Boolean = path in _pinnedFolders.value
+
+    /** 获取已缓存的文件夹大小信息 */
+    fun getCachedFolderSize(path: String): DirStats? =
+        _folderSizeCache.value[path]
+
+    /**
+     * 切换文件夹大小的计算标记。
+     * 标记时立即后台计算并缓存；取消时清除缓存。
+     */
+    fun togglePinFolder(path: String) {
+        val current = _pinnedFolders.value.toMutableSet()
+        if (current.add(path)) {
+            prefs.edit().putStringSet(KEY_PINNED_FOLDERS, current).apply()
+            _pinnedFolders.value = current
+            computeAndCacheSize(path)
+            _toastMessage.value = str(R.string.pin_added)
+        } else {
+            current.remove(path)
+            prefs.edit().putStringSet(KEY_PINNED_FOLDERS, current).apply()
+            _pinnedFolders.value = current
+            val newCache = _folderSizeCache.value.toMutableMap().apply { remove(path) }
+            _folderSizeCache.value = newCache
+            persistSizeCache()
+            sizeComputeJob?.cancel()
+            _toastMessage.value = str(R.string.pin_removed)
+        }
+    }
+
+    /** 手动刷新某个已 Pin 文件夹的大小 (清缓存后重算) */
+    fun refreshFolderSize(path: String) {
+        if (path !in _pinnedFolders.value) return
+        val newCache = _folderSizeCache.value.toMutableMap().apply { remove(path) }
+        _folderSizeCache.value = newCache
+        computeAndCacheSize(path)
+        _toastMessage.value = str(R.string.pin_calculating)
+    }
+
+    /** 后台计算并缓存指定文件夹大小 */
+    private fun computeAndCacheSize(path: String) {
+        sizeComputeJob?.cancel()
+        sizeComputeJob = viewModelScope.launch(Dispatchers.IO) {
+            val dir = File(path)
+            if (!dir.exists() || !dir.isDirectory) return@launch
+            val (size, fileCount, dirCount) =
+                FileOperationUtil.computeStats(dir) { isActive }
+            if (!isActive) return@launch
+            val stats = DirStats(size, fileCount, dirCount, finished = true)
+            val newCache = _folderSizeCache.value.toMutableMap()
+            newCache[path] = stats
+            _folderSizeCache.value = newCache
+            persistSizeCache()
+        }
+    }
+
+    /**
+     * 使受影响路径的缓存失效并触发重算。
+     * 当 [affectedPath] 或其任一祖先目录被 Pin 时，标记缓存过期并重算。
+     */
+    private fun invalidateAndRecomputeAffected(affectedPath: String) {
+        val pinned = _pinnedFolders.value
+        if (pinned.isEmpty()) return
+        val affected = pinned.filter { pinnedPath ->
+            affectedPath == pinnedPath ||
+                affectedPath.startsWith(pinnedPath + File.separator) ||
+                pinnedPath.startsWith(affectedPath + File.separator)
+        }
+        for (path in affected) {
+            computeAndCacheSize(path)
+        }
+    }
+
+    /** 持久化大小缓存到 SharedPreferences */
+    private fun persistSizeCache() {
+        val sb = StringBuilder()
+        for ((path, stats) in _folderSizeCache.value) {
+            val lm = File(path).lastModified()
+            sb.append(path)
+                .append('\t')
+                .append(stats.size)
+                .append('\t')
+                .append(stats.fileCount)
+                .append('\t')
+                .append(stats.dirCount)
+                .append('\t')
+                .append(lm)
+                .append('\n')
+        }
+        prefs.edit().putString(KEY_SIZE_CACHE, sb.toString()).apply()
+    }
+
+    /** 启动时恢复缓存：校验 lastModified，未变的直接恢复，已变的触发重算 */
+    private fun restoreSizeCache() {
+        val raw = prefs.getString(KEY_SIZE_CACHE, null) ?: return
+        val pinned = _pinnedFolders.value
+        if (pinned.isEmpty()) return
+        val restored = mutableMapOf<String, DirStats>()
+        var needRecompute = false
+        for (line in raw.lines()) {
+            if (line.isBlank()) continue
+            val parts = line.split('\t')
+            if (parts.size != 5) continue
+            val path = parts[0]
+            val size = parts[1].toLongOrNull() ?: continue
+            val fileCount = parts[2].toIntOrNull() ?: continue
+            val dirCount = parts[3].toIntOrNull() ?: continue
+            val cachedLm = parts[4].toLongOrNull() ?: continue
+            if (path !in pinned) continue
+            val currentLm = File(path).lastModified()
+            if (currentLm == cachedLm) {
+                restored[path] = DirStats(size, fileCount, dirCount, finished = true)
+            } else {
+                needRecompute = true
+            }
+        }
+        _folderSizeCache.value = restored
+        if (needRecompute) {
+            // 后台重算已失效的
+            sizeComputeJob = viewModelScope.launch(Dispatchers.IO) {
+                for (path in pinned) {
+                    if (isActive && path !in restored) {
+                        computeAndCacheSize(path)
+                    }
+                }
+            }
+        }
     }
 
     // =========================================================================
