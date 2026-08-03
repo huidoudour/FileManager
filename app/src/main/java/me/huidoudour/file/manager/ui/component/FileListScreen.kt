@@ -117,10 +117,11 @@ import java.io.File
 fun FileListScreen(
     viewModel: FileManagerViewModel,
     isPickerMode: Boolean = false,
-    selectedFile: FileItem? = null,
+    isSaveMode: Boolean = false,
     onFileSelected: ((FileItem) -> Unit)? = null,
-    onPickConfirmed: ((FileItem) -> Unit)? = null,
     onPickCancelled: (() -> Unit)? = null,
+    onSaveConfirmed: (() -> Unit)? = null,
+    onSaveCancelled: (() -> Unit)? = null,
     onShareFiles: ((List<FileItem>) -> Unit)? = null
 ) {
     val currentPath by viewModel.currentPath.collectAsState()
@@ -146,6 +147,7 @@ fun FileListScreen(
     val propertiesStats by viewModel.propertiesStats.collectAsState()
     val canNavBack by viewModel.canGoBack.collectAsState()
     val canNavForward by viewModel.canGoForward.collectAsState()
+    val saveFileCount by viewModel.saveFileCount.collectAsState()
 
     var showSortDialog by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -185,6 +187,11 @@ fun FileListScreen(
             drawerState.isOpen -> scope.launch { drawerState.close() }
             selectionMode -> viewModel.clearSelection()
             isSearchActive -> viewModel.closeSearch()
+            isSaveMode -> {
+                if (!viewModel.navigateUp()) {
+                    onSaveCancelled?.invoke()
+                }
+            }
             isPickerMode -> {
                 if (!viewModel.navigateUp()) {
                     onPickCancelled?.invoke()
@@ -288,7 +295,7 @@ fun FileListScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !isPickerMode && (drawerState.isOpen || (!selectionMode && !isSearchActive)),
+        gesturesEnabled = !isPickerMode && !isSaveMode && (drawerState.isOpen || (!selectionMode && !isSearchActive)),
         drawerContent = {
             DrawerContent(
                 currentPath = currentPath,
@@ -321,6 +328,15 @@ fun FileListScreen(
                             onQueryChange = { viewModel.setSearchQuery(it) },
                             onClose = { viewModel.closeSearch() }
                         )
+                        isSaveMode -> SaveModeTopBar(
+                            currentDirName = currentDirName,
+                            onCancel = { onSaveCancelled?.invoke() },
+                            onNavigateBack = {
+                                if (!viewModel.navigateUp()) {
+                                    onSaveCancelled?.invoke()
+                                }
+                            }
+                        )
                         else -> NormalTopBar(
                             currentDirName = currentDirName,
                             currentPath = currentPath,
@@ -347,7 +363,7 @@ fun FileListScreen(
             },
             bottomBar = {
                 Column {
-                    if (selectionMode && !isPickerMode) {
+                    if (selectionMode && !isPickerMode && !isSaveMode) {
                         SelectionActionBar(
                             singleSelection = selectedPaths.size == 1,
                             viewModel = viewModel,
@@ -375,7 +391,7 @@ fun FileListScreen(
                         )
                     }
 
-                    if (clipboard != null && !selectionMode && !isPickerMode) {
+                    if (clipboard != null && !selectionMode && !isPickerMode && !isSaveMode) {
                         PasteBar(
                             itemCount = clipboard!!.items.size,
                             isCut = clipboard!!.isCut,
@@ -385,43 +401,19 @@ fun FileListScreen(
                     }
 
                     AnimatedVisibility(
-                        visible = isPickerMode && selectedFile != null,
+                        visible = isSaveMode && saveFileCount > 0,
                         enter = fadeIn(),
                         exit = fadeOut()
                     ) {
-                        Column {
-                            HorizontalDivider()
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = stringResource(R.string.file_selected),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = selectedFile?.name ?: "",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Button(onClick = {
-                                    selectedFile?.let { onPickConfirmed?.invoke(it) }
-                                }) {
-                                    Text(stringResource(R.string.confirm_select))
-                                }
-                            }
-                        }
+                        SaveModeBar(
+                            fileCount = saveFileCount,
+                            destDirName = currentDirName,
+                            onSave = { onSaveConfirmed?.invoke() },
+                            onCancel = { onSaveCancelled?.invoke() }
+                        )
                     }
 
-                    if (!isPickerMode && !selectionMode && !isSearchActive) {
+                    if (!isPickerMode && !isSaveMode && !selectionMode && !isSearchActive) {
                         BottomNavBar(
                             canBack = canNavBack,
                             canForward = canNavForward,
@@ -443,7 +435,7 @@ fun FileListScreen(
                     .padding(innerPadding)
             ) {
                 when {
-                    isLoading && !searching -> {
+                    isLoading && !searching && displayedFiles.isEmpty() -> {
                         CircularProgressIndicator(
                             modifier = Modifier.align(Alignment.Center)
                         )
@@ -460,7 +452,7 @@ fun FileListScreen(
                             )
                         }
                     }
-                    displayedFiles.isEmpty() && errorMessage == null -> {
+                    displayedFiles.isEmpty() && errorMessage == null && !isLoading -> {
                         EmptyPlaceholder(
                             text = stringResource(R.string.dir_empty),
                             modifier = Modifier.align(Alignment.Center)
@@ -494,7 +486,6 @@ fun FileListScreen(
                                     FileItemRow(
                                         fileItem = fileItem,
                                         viewModel = viewModel,
-                                        isSelected = selectedFile?.path == fileItem.path,
                                         isChecked = fileItem.path in selectedPaths,
                                         selectionMode = selectionMode,
                                         isFavorite = fileItem.path in favorites,
@@ -514,7 +505,7 @@ fun FileListScreen(
                                                 }
                                             }
                                         },
-                                        onItemLongClick = if (isPickerMode) null else { pressOffset ->
+                                        onItemLongClick = if (isPickerMode || isSaveMode) null else { pressOffset ->
                                             if (blockItemClicks) {
                                                 blockItemClicks = false
                                             } else if (selectionMode) {
@@ -937,6 +928,94 @@ private fun SearchTopBar(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
     )
+}
+
+// =============================================================================
+//  保存模式顶栏 (接收其他 App 分享的文件)
+// =============================================================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SaveModeTopBar(
+    currentDirName: String,
+    onCancel: () -> Unit,
+    onNavigateBack: () -> Unit
+) {
+    TopAppBar(
+        title = {
+            Column {
+                Text(
+                    text = stringResource(R.string.save_mode_select_folder),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = currentDirName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        },
+        navigationIcon = {
+            IconButton(onClick = onCancel) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.cancel)
+                )
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+    )
+}
+
+// =============================================================================
+//  保存模式底部栏
+// =============================================================================
+@Composable
+private fun SaveModeBar(
+    fileCount: Int,
+    destDirName: String,
+    onSave: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Column {
+        HorizontalDivider()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.save_files_count, fileCount),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = stringResource(R.string.save_here),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            TextButton(onClick = onCancel) {
+                Text(stringResource(R.string.cancel))
+            }
+            Button(onClick = onSave) {
+                Text(stringResource(R.string.save_here))
+            }
+        }
+    }
 }
 
 // =============================================================================

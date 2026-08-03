@@ -2,7 +2,9 @@ package me.huidoudour.file.manager.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
 import android.os.Environment
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +43,12 @@ data class DirStats(
     val fileCount: Int,
     val dirCount: Int,
     val finished: Boolean
+)
+
+/** 保存模式传入的数据 */
+data class SaveData(
+    val uris: List<Uri>,
+    val textContent: String? = null
 )
 
 class FileManagerViewModel(application: Application) : AndroidViewModel(application) {
@@ -163,6 +171,16 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     /** 是否处于文件选取模式 */
     private var _pickerMode = false
 
+    /** 是否处于保存模式 (接收其他 App 分享的文件) */
+    private var _isSaveMode = false
+
+    /** 保存模式下的待保存数据 */
+    private var _saveData: SaveData? = null
+
+    /** 保存模式下传入的文件总数 (用于 UI 显示) */
+    private val _saveFileCount = MutableStateFlow(0)
+    val saveFileCount: StateFlow<Int> = _saveFileCount.asStateFlow()
+
     init {
         // 主线程仅派发，I/O 完全在后台
         viewModelScope.launch(Dispatchers.IO) {
@@ -180,6 +198,114 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun isPickerMode(): Boolean = _pickerMode
+
+    // --- 保存模式 (接收其他 App 分享/导出的文件) ---
+
+    fun setSaveMode(enabled: Boolean) {
+        _isSaveMode = enabled
+    }
+
+    fun isSaveMode(): Boolean = _isSaveMode
+
+    /** 设置待保存的数据 (从 Intent 中提取的 URI 和文本) */
+    fun setSaveData(uris: List<Uri>, textContent: String? = null) {
+        _saveData = SaveData(uris, textContent)
+        _saveFileCount.value = uris.size + (if (!textContent.isNullOrBlank()) 1 else 0)
+        _isSaveMode = true
+    }
+
+    /** 获取保存模式下的文件名预览 (仅用于 UI 提示) */
+    fun getSaveFileNames(): List<String> {
+        val data = _saveData ?: return emptyList()
+        val names = mutableListOf<String>()
+        val resolver = getApplication<Application>().contentResolver
+        for (uri in data.uris) {
+            val name = queryDisplayName(uri, resolver)
+            names.add(name)
+        }
+        if (!data.textContent.isNullOrBlank()) {
+            names.add(str(R.string.save_text_as_file))
+        }
+        return names
+    }
+
+    /**
+     * 执行保存操作：将待保存的数据写入当前目录
+     * @return 成功保存的文件数
+     */
+    suspend fun performSave(): Int = withContext(Dispatchers.IO) {
+        val data = _saveData ?: return@withContext 0
+        val destDir = File(_currentPath.value)
+        val resolver = getApplication<Application>().contentResolver
+        var saved = 0
+
+        // 保存 URI 文件
+        for (uri in data.uris) {
+            try {
+                val name = queryDisplayName(uri, resolver)
+                val destFile = resolveDestFile(destDir, name, uri)
+                resolver.openInputStream(uri)?.use { input ->
+                    destFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                saved++
+            } catch (_: Exception) {
+                // 跳过失败的文件
+            }
+        }
+
+        // 保存文本内容
+        if (!data.textContent.isNullOrBlank()) {
+            try {
+                val textName = "shared_text_${System.currentTimeMillis()}.txt"
+                val textFile = File(destDir, textName)
+                textFile.writeText(data.textContent)
+                saved++
+            } catch (_: Exception) {
+                // 文本保存失败
+            }
+        }
+
+        saved
+    }
+
+    /** 查询 URI 的显示名称 */
+    private fun queryDisplayName(uri: Uri, resolver: android.content.ContentResolver): String {
+        try {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) return cursor.getString(idx)
+                    }
+                }
+        } catch (_: Exception) { }
+        // 降级：从 URI 路径提取文件名，或使用时间戳
+        return uri.lastPathSegment?.substringAfterLast('/') ?: "file_${System.currentTimeMillis()}"
+    }
+
+    /** 解决目标文件冲突：重名则添加序号 */
+    private fun resolveDestFile(dir: File, name: String, uri: Uri): File {
+        val baseName = name.ifBlank { "file_${System.currentTimeMillis()}" }
+        val dotIndex = baseName.lastIndexOf('.')
+        val stem = if (dotIndex > 0) baseName.substring(0, dotIndex) else baseName
+        val ext = if (dotIndex > 0) baseName.substring(dotIndex) else ""
+
+        var candidate = File(dir, baseName)
+        var count = 1
+        while (candidate.exists()) {
+            candidate = File(dir, "${stem}_($count)$ext")
+            count++
+        }
+        return candidate
+    }
+
+    fun clearSaveData() {
+        _saveData = null
+        _isSaveMode = false
+        _saveFileCount.value = 0
+    }
 
     /**
      * 加载指定目录的文件列表
@@ -495,8 +621,6 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             _toastMessage.value =
                 if (failed == 0) str(R.string.operation_done)
                 else str(R.string.operation_failed_items, failed)
-            // Pin 缓存失效: 目标目录
-            invalidateAndRecomputeAffected(_currentPath.value)
             refresh()
         }
     }
@@ -522,9 +646,6 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             _toastMessage.value =
                 if (failed == 0) str(R.string.deleted_items, items.size)
                 else str(R.string.delete_failed_items, failed)
-            // Pin 缓存失效: 所删除项的父目录
-            items.map { it.parentPath }.distinct()
-                .forEach { invalidateAndRecomputeAffected(it) }
             refresh()
         }
     }
@@ -547,8 +668,6 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
             clearSelection()
-            // Pin 缓存失效: 重命名项的父目录
-            invalidateAndRecomputeAffected(item.parentPath)
             refresh()
         }
     }
@@ -577,8 +696,6 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                         if (ok) str(R.string.created_item, name) else str(R.string.create_failed)
                 }
             }
-            // Pin 缓存失效: 当前目录
-            invalidateAndRecomputeAffected(_currentPath.value)
             refresh()
         }
     }
@@ -726,23 +843,6 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             newCache[path] = stats
             _folderSizeCache.value = newCache
             persistSizeCache()
-        }
-    }
-
-    /**
-     * 使受影响路径的缓存失效并触发重算。
-     * 当 [affectedPath] 或其任一祖先目录被 Pin 时，标记缓存过期并重算。
-     */
-    private fun invalidateAndRecomputeAffected(affectedPath: String) {
-        val pinned = _pinnedFolders.value
-        if (pinned.isEmpty()) return
-        val affected = pinned.filter { pinnedPath ->
-            affectedPath == pinnedPath ||
-                affectedPath.startsWith(pinnedPath + File.separator) ||
-                pinnedPath.startsWith(affectedPath + File.separator)
-        }
-        for (path in affected) {
-            computeAndCacheSize(path)
         }
     }
 

@@ -13,24 +13,23 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import me.huidoudour.file.manager.model.FileItem
 import me.huidoudour.file.manager.ui.component.FileListScreen
 import me.huidoudour.file.manager.ui.theme.FileManagerTheme
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
-import androidx.core.net.toUri
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var viewModel: FileManagerViewModel
     private var isPickerMode = false
+    private var isSaveMode = false
 
     // 权限请求 launcher
     private val requestPermissionLauncher =
@@ -59,24 +58,27 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             FileManagerTheme {
-                var selectedFile by remember { mutableStateOf<FileItem?>(null) }
-
                 FileListScreen(
                     viewModel = viewModel,
                     isPickerMode = isPickerMode,
-                    selectedFile = selectedFile,
+                    isSaveMode = isSaveMode,
                     onFileSelected = { file ->
                         if (isPickerMode) {
-                            selectedFile = file
+                            returnFileToCaller(file)
                         } else {
                             // 非选取模式点击文件：尝试用其他 App 打开
                             openFile(file)
                         }
                     },
-                    onPickConfirmed = { file ->
-                        returnFileToCaller(file)
-                    },
                     onPickCancelled = {
+                        setResult(RESULT_CANCELED)
+                        finish()
+                    },
+                    onSaveConfirmed = {
+                        performFileSave()
+                    },
+                    onSaveCancelled = {
+                        viewModel.clearSaveData()
                         setResult(RESULT_CANCELED)
                         finish()
                     },
@@ -94,19 +96,59 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 处理 Intent，判断是否是文件选取模式
+     * 处理 Intent，判断是文件选取模式还是保存模式
      */
     private fun handleIntent(intent: Intent?) {
         intent?.let {
             val action = it.action
-            if (action == Intent.ACTION_OPEN_DOCUMENT ||
+            when {
+                action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE -> {
+                    handleSendIntent(it)
+                }
+                action == Intent.ACTION_OPEN_DOCUMENT ||
                 action == Intent.ACTION_GET_CONTENT ||
-                action == Intent.ACTION_PICK
-            ) {
-                isPickerMode = true
-                viewModel.setPickerMode(true)
+                action == Intent.ACTION_PICK -> {
+                    isPickerMode = true
+                    viewModel.setPickerMode(true)
+                }
             }
         }
+    }
+
+    /**
+     * 处理 ACTION_SEND / ACTION_SEND_MULTIPLE 分享意图
+     */
+    private fun handleSendIntent(intent: Intent) {
+        isSaveMode = true
+        viewModel.setSaveMode(true)
+
+        val uris = mutableListOf<Uri>()
+        var textContent: String? = null
+
+        when (intent.action) {
+            Intent.ACTION_SEND_MULTIPLE -> {
+                @Suppress("DEPRECATION")
+                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.let { uris.addAll(it) }
+            }
+            Intent.ACTION_SEND -> {
+                // 尝试获取文件 URI
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let { uris.add(it) }
+                // 如果分享的是文本内容 (无文件 URI)
+                if (uris.isEmpty()) {
+                    textContent = intent.getStringExtra(Intent.EXTRA_TEXT)
+                }
+            }
+        }
+
+        if (uris.isEmpty() && textContent.isNullOrBlank()) {
+            Toast.makeText(this, getString(R.string.save_failed, "未接收到可保存的内容"), Toast.LENGTH_SHORT).show()
+            setResult(RESULT_CANCELED)
+            finish()
+            return
+        }
+
+        viewModel.setSaveData(uris, textContent)
     }
 
     /**
@@ -138,6 +180,34 @@ class MainActivity : ComponentActivity() {
             setResult(RESULT_CANCELED)
         }
         finish()
+    }
+
+    /**
+     * 执行保存操作：将分享的文件写入当前浏览的目录
+     */
+    private fun performFileSave() {
+        val destDir = viewModel.currentPath.value
+        viewModel.viewModelScope.launch {
+            val savedCount = viewModel.performSave()
+            viewModel.clearSaveData()
+            viewModel.refresh()
+            if (savedCount > 0) {
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.save_success, File(destDir).name),
+                    Toast.LENGTH_SHORT
+                ).show()
+                setResult(RESULT_OK)
+            } else {
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.save_failed, ""),
+                    Toast.LENGTH_SHORT
+                ).show()
+                setResult(RESULT_CANCELED)
+            }
+            finish()
+        }
     }
 
     companion object {

@@ -150,6 +150,15 @@
     <string name="file_selected">已选择:</string>
     <string name="confirm_select">确认选择</string>
 
+    <!-- 保存模式 (接收其他 App 分享/导出的文件) -->
+    <string name="save_mode_title">保存文件</string>
+    <string name="save_mode_select_folder">选择保存位置</string>
+    <string name="save_here">保存到此处</string>
+    <string name="save_success">已保存到 %1$s</string>
+    <string name="save_failed">保存失败: %1$s</string>
+    <string name="save_files_count">%1$d 个文件待保存</string>
+    <string name="save_text_as_file">文本内容</string>
+
     <!-- MainActivity -->
     <string name="permission_granted">权限已授予</string>
     <string name="permission_denied">需要存储权限才能浏览文件</string>

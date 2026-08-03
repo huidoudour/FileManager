@@ -86,6 +86,20 @@
                 <category android:name="android.intent.category.OPENABLE" />
                 <data android:mimeType="audio/*" />
             </intent-filter>
+
+            <!-- 保存/导出文件：接收其他 App 通过分享发送的文件 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+
+            <!-- 保存/导出多个文件 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
 
         <!-- FileProvider 用于安全地与其他 App 分享文件 -->
@@ -97,6 +111,18 @@
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- DocumentsProvider 用于 SAF 集成，使本 App 出现在系统文件选择器中 -->
+        <provider
+            android:name=".provider.FileDocumentsProvider"
+            android:authorities="${applicationId}.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
         </provider>
 
         <meta-data

@@ -9,13 +9,14 @@ plugins {
 }
 
 // ── Git 版本控制 ──
-val appBackVersion = 3
-val appBaseVersion = "26.1"
+val backVersionCode = 11
+val baseVersionCode = 1
+val baseVersionName = "26.3"
 
 fun Project.gitCommitCount(): Int = try {
     providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
         .standardOutput.asText.get().trim().toInt()
-} catch (_: Exception) { appBackVersion }
+} catch (_: Exception) { backVersionCode }
 
 fun Project.gitHash(): String = try {
     providers.exec { commandLine("git", "rev-parse", "--short=7", "HEAD") }
@@ -24,8 +25,8 @@ fun Project.gitHash(): String = try {
     SimpleDateFormat("MMddHHmm").format(Date())
 }
 
-val appVersionCode = gitCommitCount()
-val appVersionName = "${appBaseVersion}.${gitCommitCount()}.${gitHash()}"
+val appVersionCode = baseVersionCode + gitCommitCount()
+val appVersionName = "${baseVersionName}.${gitCommitCount()}.${gitHash()}"
 
 android {
     namespace = "me.huidoudour.file.manager"
