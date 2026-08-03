@@ -645,7 +645,7 @@ private fun FileActionMenu(
     val popupPositionProvider = remember(anchorPoint) {
         object : PopupPositionProvider {
             override fun calculatePosition(
-                popupAnchorBounds: IntRect,
+                anchorBounds: IntRect,
                 windowSize: IntSize,
                 layoutDirection: LayoutDirection,
                 popupContentSize: IntSize

@@ -92,6 +92,11 @@ android {
     buildFeatures {
         compose = true
     }
+    packaging {
+        jniLibs {
+            excludes += setOf("**/libandroidx.graphics.path.so")
+        }
+    }
 }
 
 dependencies {
@@ -113,4 +118,5 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.material3.adaptive.navigation.suite)
 }
