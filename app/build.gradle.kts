@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION")
-
 import java.text.SimpleDateFormat
 import java.util.Date
 
@@ -10,8 +8,8 @@ plugins {
 
 // ── Git 版本控制 ──
 val backVersionCode = 11
-val baseVersionCode = 1
-val baseVersionName = "26.3"
+val baseVersionCode = 2
+val baseVersionName = "26.4"
 
 fun Project.gitCommitCount(): Int = try {
     providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
