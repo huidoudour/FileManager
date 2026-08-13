@@ -7,8 +7,8 @@ espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 kotlin = "2.4.10"
-composeBom = "2026.06.01"
-compose-ui-test = "1.12.0-rc01"
+composeBom = "2026.08.00"
+compose-ui-test = "1.13.0-alpha01"
 coil = "2.7.0"
 
 [libraries]
