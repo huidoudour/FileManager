@@ -1,0 +1,44 @@
+name: Update Preview Versions
+
+on:
+  schedule:
+    # 每天 UTC 04:00（北京时间 12:00）检查一次预览版本更新
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-preview-versions
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check for preview version updates
+        id: check
+        run: python .github/scripts/update_preview_versions.py
+
+      - name: Create pull request
+        if: steps.check.outputs.updated == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: ${{ steps.check.outputs.commit_message }}
+          branch: update/preview-versions
+          delete-branch: true
+          title: ${{ steps.check.outputs.pr_title }}
+          body: ${{ steps.check.outputs.pr_body }}
+          labels: dependencies
