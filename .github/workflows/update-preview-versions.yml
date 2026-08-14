@@ -2,8 +2,8 @@ name: Update Preview Versions
 
 on:
   schedule:
-    # 每天 UTC 04:00（北京时间 12:00）检查一次预览版本更新
-    - cron: "0 4 * * *"
+    # 每天 UTC 00:00（北京时间 08:00）检查一次预览版本更新
+    - cron: "0 0 * * *"
   workflow_dispatch:
 
 permissions:
