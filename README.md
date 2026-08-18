@@ -1,6 +1,7 @@
 # FileManager
 
 一个使用 Kotlin + Jetpack Compose 编写的轻量级 Android 文件管理器
+> 此项目需要使用 Canary 频道的 Android Studio 来打开
 
 ## 功能
 
