@@ -2,8 +2,8 @@ name: Update Preview Versions
 
 on:
   schedule:
-    # 每天 UTC 00:00（北京时间 08:00）检查一次预览版本更新
-    - cron: "0 0 * * *"
+    # Daily at UTC 04:00 (Beijing 12:00): check for preview version updates
+    - cron: "0 4 * * *"
   workflow_dispatch:
 
 permissions:
@@ -31,28 +31,16 @@ jobs:
         id: check
         run: python .github/scripts/update_preview_versions.py
 
-      # 导入 GPG 私钥并启用 commit.gpgsign，使自动提交带签名（GitHub 显示 Verified）
-      # 前提：仓库 Secrets 中配置 GPG_PRIVATE_KEY（私钥）与 GPG_PASSPHRASE（口令，可选），
-      #       且公钥已添加到 GitHub 账户，密钥 UID 邮箱与账户邮箱一致
-      - name: Import GPG key
-        id: import-gpg
-        if: steps.check.outputs.updated == 'true'
-        uses: crazy-max/ghaction-import-gpg@v6
-        with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.GPG_PASSPHRASE }}
-
       - name: Create pull request
         if: steps.check.outputs.updated == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Sign commits as GitHub Actions[bot] with the default GITHUB_TOKEN, marked Verified by GitHub; no extra keys needed
+          sign-commits: true
           commit-message: ${{ steps.check.outputs.commit_message }}
           branch: update/preview-versions
           delete-branch: true
           title: ${{ steps.check.outputs.pr_title }}
           body: ${{ steps.check.outputs.pr_body }}
           labels: dependencies
-          # 提交者信息取 GPG 密钥 UID，保证邮箱与 GitHub 账户一致才能显示 Verified
-          committer: ${{ steps.import-gpg.outputs.name }} <${{ steps.import-gpg.outputs.email }}>
-          author: ${{ steps.import-gpg.outputs.name }} <${{ steps.import-gpg.outputs.email }}>
