@@ -35,6 +35,7 @@ jobs:
       # 前提：仓库 Secrets 中配置 GPG_PRIVATE_KEY（私钥）与 GPG_PASSPHRASE（口令，可选），
       #       且公钥已添加到 GitHub 账户，密钥 UID 邮箱与账户邮箱一致
       - name: Import GPG key
+        id: import-gpg
         if: steps.check.outputs.updated == 'true'
         uses: crazy-max/ghaction-import-gpg@v6
         with:
