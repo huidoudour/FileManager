@@ -113,18 +113,6 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- DocumentsProvider 用于 SAF 集成，使本 App 出现在系统文件选择器中 -->
-        <provider
-            android:name=".provider.FileDocumentsProvider"
-            android:authorities="${applicationId}.documents"
-            android:exported="true"
-            android:grantUriPermissions="true"
-            android:permission="android.permission.MANAGE_DOCUMENTS">
-            <intent-filter>
-                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
-            </intent-filter>
-        </provider>
-
         <meta-data
             android:name="me.huidoudour.core.version"
             android:value="40" />

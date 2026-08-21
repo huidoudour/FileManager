@@ -169,10 +169,12 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     val canGoForward: StateFlow<Boolean> = _canGoForward.asStateFlow()
 
     /** 是否处于文件选取模式 */
-    private var _pickerMode = false
+    private val _pickerMode = MutableStateFlow(false)
+    val pickerMode: StateFlow<Boolean> = _pickerMode.asStateFlow()
 
     /** 是否处于保存模式 (接收其他 App 分享的文件) */
-    private var _isSaveMode = false
+    private val _saveMode = MutableStateFlow(false)
+    val saveMode: StateFlow<Boolean> = _saveMode.asStateFlow()
 
     /** 保存模式下的待保存数据 */
     private var _saveData: SaveData? = null
@@ -194,24 +196,24 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     // --- 公开方法 ---
 
     fun setPickerMode(enabled: Boolean) {
-        _pickerMode = enabled
+        _pickerMode.value = enabled
     }
 
-    fun isPickerMode(): Boolean = _pickerMode
+    fun isPickerMode(): Boolean = _pickerMode.value
 
     // --- 保存模式 (接收其他 App 分享/导出的文件) ---
 
     fun setSaveMode(enabled: Boolean) {
-        _isSaveMode = enabled
+        _saveMode.value = enabled
     }
 
-    fun isSaveMode(): Boolean = _isSaveMode
+    fun isSaveMode(): Boolean = _saveMode.value
 
     /** 设置待保存的数据 (从 Intent 中提取的 URI 和文本) */
     fun setSaveData(uris: List<Uri>, textContent: String? = null) {
         _saveData = SaveData(uris, textContent)
         _saveFileCount.value = uris.size + (if (!textContent.isNullOrBlank()) 1 else 0)
-        _isSaveMode = true
+        _saveMode.value = true
     }
 
     /** 获取保存模式下的文件名预览 (仅用于 UI 提示) */
@@ -303,7 +305,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun clearSaveData() {
         _saveData = null
-        _isSaveMode = false
+        _saveMode.value = false
         _saveFileCount.value = 0
     }
 
@@ -474,7 +476,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
      * 保存当前路径（仅在非选取模式下持久化）
      */
     private fun saveCurrentPath() {
-        if (!_pickerMode) {
+        if (!_pickerMode.value) {
             prefs.edit().putString(KEY_LAST_PATH, _currentPath.value).apply()
         }
     }

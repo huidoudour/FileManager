@@ -116,8 +116,6 @@ import java.io.File
 @Composable
 fun FileListScreen(
     viewModel: FileManagerViewModel,
-    isPickerMode: Boolean = false,
-    isSaveMode: Boolean = false,
     onFileSelected: ((FileItem) -> Unit)? = null,
     onPickCancelled: (() -> Unit)? = null,
     onSaveConfirmed: (() -> Unit)? = null,
@@ -148,6 +146,8 @@ fun FileListScreen(
     val canNavBack by viewModel.canGoBack.collectAsState()
     val canNavForward by viewModel.canGoForward.collectAsState()
     val saveFileCount by viewModel.saveFileCount.collectAsState()
+    val pickerMode by viewModel.pickerMode.collectAsState()
+    val saveMode by viewModel.saveMode.collectAsState()
 
     var showSortDialog by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -187,12 +187,12 @@ fun FileListScreen(
             drawerState.isOpen -> scope.launch { drawerState.close() }
             selectionMode -> viewModel.clearSelection()
             isSearchActive -> viewModel.closeSearch()
-            isSaveMode -> {
+            saveMode -> {
                 if (!viewModel.navigateUp()) {
                     onSaveCancelled?.invoke()
                 }
             }
-            isPickerMode -> {
+            pickerMode -> {
                 if (!viewModel.navigateUp()) {
                     onPickCancelled?.invoke()
                 }
@@ -295,7 +295,7 @@ fun FileListScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !isPickerMode && !isSaveMode && (drawerState.isOpen || (!selectionMode && !isSearchActive)),
+        gesturesEnabled = !pickerMode && !saveMode && (drawerState.isOpen || (!selectionMode && !isSearchActive)),
         drawerContent = {
             DrawerContent(
                 currentPath = currentPath,
@@ -328,7 +328,7 @@ fun FileListScreen(
                             onQueryChange = { viewModel.setSearchQuery(it) },
                             onClose = { viewModel.closeSearch() }
                         )
-                        isSaveMode -> SaveModeTopBar(
+                        saveMode -> SaveModeTopBar(
                             currentDirName = currentDirName,
                             onCancel = { onSaveCancelled?.invoke() },
                             onNavigateBack = {
@@ -340,7 +340,7 @@ fun FileListScreen(
                         else -> NormalTopBar(
                             currentDirName = currentDirName,
                             currentPath = currentPath,
-                            isPickerMode = isPickerMode,
+                            isPickerMode = pickerMode,
                             showMoreMenu = showMoreMenu,
                             showHidden = showHidden,
                             onShowMoreMenuChange = { showMoreMenu = it },
@@ -363,7 +363,7 @@ fun FileListScreen(
             },
             bottomBar = {
                 Column {
-                    if (selectionMode && !isPickerMode && !isSaveMode) {
+                    if (selectionMode && !pickerMode && !saveMode) {
                         SelectionActionBar(
                             singleSelection = selectedPaths.size == 1,
                             viewModel = viewModel,
@@ -391,7 +391,7 @@ fun FileListScreen(
                         )
                     }
 
-                    if (clipboard != null && !selectionMode && !isPickerMode && !isSaveMode) {
+                    if (clipboard != null && !selectionMode && !pickerMode && !saveMode) {
                         PasteBar(
                             itemCount = clipboard!!.items.size,
                             isCut = clipboard!!.isCut,
@@ -401,7 +401,7 @@ fun FileListScreen(
                     }
 
                     AnimatedVisibility(
-                        visible = isSaveMode && saveFileCount > 0,
+                        visible = saveMode && saveFileCount > 0,
                         enter = fadeIn(),
                         exit = fadeOut()
                     ) {
@@ -413,7 +413,7 @@ fun FileListScreen(
                         )
                     }
 
-                    if (!isPickerMode && !isSaveMode && !selectionMode && !isSearchActive) {
+                    if (!pickerMode && !saveMode && !selectionMode && !isSearchActive) {
                         BottomNavBar(
                             canBack = canNavBack,
                             canForward = canNavForward,
@@ -505,7 +505,7 @@ fun FileListScreen(
                                                 }
                                             }
                                         },
-                                        onItemLongClick = if (isPickerMode || isSaveMode) null else { pressOffset ->
+                                        onItemLongClick = if (pickerMode || saveMode) null else { pressOffset ->
                                             if (blockItemClicks) {
                                                 blockItemClicks = false
                                             } else if (selectionMode) {

@@ -60,8 +60,6 @@ class MainActivity : ComponentActivity() {
             FileManagerTheme {
                 FileListScreen(
                     viewModel = viewModel,
-                    isPickerMode = isPickerMode,
-                    isSaveMode = isSaveMode,
                     onFileSelected = { file ->
                         if (isPickerMode) {
                             returnFileToCaller(file)
@@ -92,6 +90,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleIntent(intent)
     }
 
@@ -138,6 +137,13 @@ class MainActivity : ComponentActivity() {
                 if (uris.isEmpty()) {
                     textContent = intent.getStringExtra(Intent.EXTRA_TEXT)
                 }
+            }
+        }
+
+        // 兼容部分 App 通过 ClipData 传递文件 Uri (不放入 EXTRA_STREAM)
+        intent.clipData?.let { clip ->
+            for (i in 0 until clip.itemCount) {
+                clip.getItemAt(i).uri?.let { uris.add(it) }
             }
         }
 
