@@ -65,8 +65,18 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         private const val KEY_FAVORITES = "favorites"
         private const val KEY_PINNED_FOLDERS = "pinned_folders"
         private const val KEY_SIZE_CACHE = "size_cache"
+        private const val KEY_HIDDEN_QUICK_DIRS = "hidden_quick_dirs"
         /** 搜索结果上限 */
         private const val MAX_SEARCH_RESULTS = 300
+
+        /** 侧栏快捷目录 id (用于显示设置持久化) */
+        const val QUICK_DIR_INTERNAL = "quick_internal"
+        const val QUICK_DIR_DOWNLOADS = "quick_downloads"
+        const val QUICK_DIR_CAMERA = "quick_camera"
+        const val QUICK_DIR_PICTURES = "quick_pictures"
+        const val QUICK_DIR_VIDEOS = "quick_videos"
+        const val QUICK_DIR_MUSIC = "quick_music"
+        const val QUICK_DIR_DOCUMENTS = "quick_documents"
     }
 
     private val prefs =
@@ -115,6 +125,10 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     /** 是否显示隐藏文件 */
     private val _showHidden = MutableStateFlow(prefs.getBoolean(KEY_SHOW_HIDDEN, false))
     val showHidden: StateFlow<Boolean> = _showHidden.asStateFlow()
+
+    /** 侧栏中被隐藏的快捷目录 id 集合 */
+    private val _hiddenQuickDirs = MutableStateFlow(loadHiddenQuickDirs())
+    val hiddenQuickDirs: StateFlow<Set<String>> = _hiddenQuickDirs.asStateFlow()
 
     /** 搜索状态 */
     private val _isSearchActive = MutableStateFlow(false)
@@ -711,6 +725,22 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         _showHidden.value = newValue
         prefs.edit().putBoolean(KEY_SHOW_HIDDEN, newValue).apply()
         refresh()
+    }
+
+    // =========================================================================
+    //  侧栏快捷目录显示设置
+    // =========================================================================
+
+    private fun loadHiddenQuickDirs(): Set<String> =
+        prefs.getStringSet(KEY_HIDDEN_QUICK_DIRS, emptySet()).orEmpty()
+
+    fun isQuickDirHidden(id: String): Boolean = id in _hiddenQuickDirs.value
+
+    fun setQuickDirHidden(id: String, hidden: Boolean) {
+        val current = _hiddenQuickDirs.value.toMutableSet()
+        if (hidden) current.add(id) else current.remove(id)
+        prefs.edit().putStringSet(KEY_HIDDEN_QUICK_DIRS, current).apply()
+        _hiddenQuickDirs.value = current
     }
 
     // =========================================================================

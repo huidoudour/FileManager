@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -55,22 +56,27 @@ import java.io.File
 //  侧边栏抽屉: 快捷目录 + 收藏
 // =============================================================================
 
-private data class QuickDir(@StringRes val labelRes: Int, val path: String, val icon: ImageVector)
+data class QuickDir(
+    val id: String,
+    @StringRes val labelRes: Int,
+    val path: String,
+    val icon: ImageVector
+)
 
-/** 常用快捷目录 (仅列出实际存在的) */
-private fun buildQuickDirs(): List<QuickDir> {
+/** 常用快捷目录 (含实际不存在的, 用于设置页统一展示) */
+fun buildAllQuickDirs(): List<QuickDir> {
     fun publicDir(type: String) =
         Environment.getExternalStoragePublicDirectory(type).absolutePath
 
     return listOf(
-        QuickDir(R.string.internal_storage, FileManagerViewModel.STORAGE_ROOT, Icons.Filled.PhoneAndroid),
-        QuickDir(R.string.quick_downloads, publicDir(Environment.DIRECTORY_DOWNLOADS), Icons.Filled.Download),
-        QuickDir(R.string.quick_camera, publicDir(Environment.DIRECTORY_DCIM), Icons.Filled.PhotoCamera),
-        QuickDir(R.string.quick_pictures, publicDir(Environment.DIRECTORY_PICTURES), Icons.Filled.Image),
-        QuickDir(R.string.quick_videos, publicDir(Environment.DIRECTORY_MOVIES), Icons.Filled.Movie),
-        QuickDir(R.string.quick_music, publicDir(Environment.DIRECTORY_MUSIC), Icons.Filled.MusicNote),
-        QuickDir(R.string.quick_documents, publicDir(Environment.DIRECTORY_DOCUMENTS), Icons.Filled.Description)
-    ).filter { File(it.path).exists() }
+        QuickDir(FileManagerViewModel.QUICK_DIR_INTERNAL, R.string.internal_storage, FileManagerViewModel.STORAGE_ROOT, Icons.Filled.PhoneAndroid),
+        QuickDir(FileManagerViewModel.QUICK_DIR_DOWNLOADS, R.string.quick_downloads, publicDir(Environment.DIRECTORY_DOWNLOADS), Icons.Filled.Download),
+        QuickDir(FileManagerViewModel.QUICK_DIR_CAMERA, R.string.quick_camera, publicDir(Environment.DIRECTORY_DCIM), Icons.Filled.PhotoCamera),
+        QuickDir(FileManagerViewModel.QUICK_DIR_PICTURES, R.string.quick_pictures, publicDir(Environment.DIRECTORY_PICTURES), Icons.Filled.Image),
+        QuickDir(FileManagerViewModel.QUICK_DIR_VIDEOS, R.string.quick_videos, publicDir(Environment.DIRECTORY_MOVIES), Icons.Filled.Movie),
+        QuickDir(FileManagerViewModel.QUICK_DIR_MUSIC, R.string.quick_music, publicDir(Environment.DIRECTORY_MUSIC), Icons.Filled.MusicNote),
+        QuickDir(FileManagerViewModel.QUICK_DIR_DOCUMENTS, R.string.quick_documents, publicDir(Environment.DIRECTORY_DOCUMENTS), Icons.Filled.Description)
+    )
 }
 
 @Composable
@@ -78,11 +84,14 @@ fun DrawerContent(
     currentPath: String,
     favorites: List<String>,
     showHidden: Boolean,
+    hiddenQuickDirs: Set<String>,
     onNavigate: (String) -> Unit,
     onRemoveFavorite: (String) -> Unit,
-    onToggleShowHidden: () -> Unit
+    onToggleShowHidden: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
-    val quickDirs = remember { buildQuickDirs() }
+    val allQuickDirs = remember { buildAllQuickDirs() }
+    val quickDirs = allQuickDirs.filter { it.id !in hiddenQuickDirs && File(it.path).exists() }
 
     ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
         Column(
@@ -92,7 +101,9 @@ fun DrawerContent(
         ) {
             // ---- 头部 ----
             Row(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -110,7 +121,7 @@ fun DrawerContent(
                     )
                 }
                 Spacer(modifier = Modifier.width(14.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stringResource(R.string.drawer_title),
                         style = MaterialTheme.typography.titleMedium,
@@ -120,6 +131,12 @@ fun DrawerContent(
                         text = stringResource(R.string.drawer_subtitle),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(onClick = onOpenSettings) {
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = stringResource(R.string.settings)
                     )
                 }
             }

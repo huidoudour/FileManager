@@ -171,4 +171,13 @@
     <string name="installer_required">请先安装 io.github.huidoudour.Installer 安装器</string>
     <string name="installer_unsupported">io.github.huidoudour.Installer 不支持安装此 APK</string>
     <string name="install_failed">安装失败: %1$s</string>
+
+    <!-- 设置页 -->
+    <string name="settings">设置</string>
+    <string name="settings_title">设置</string>
+    <string name="back">返回</string>
+    <string name="sidebar_special_folders">侧栏快捷目录</string>
+    <string name="show_in_sidebar">在侧边栏显示</string>
+    <string name="settings_change_tip">关闭后，对应的快捷目录将不再显示在左侧栏。</string>
+    <string name="not_available">不可用</string>
 </resources>

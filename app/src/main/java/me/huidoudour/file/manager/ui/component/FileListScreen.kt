@@ -138,6 +138,7 @@ fun FileListScreen(
     val searchResults by viewModel.searchResults.collectAsState()
     val isSearchLoading by viewModel.isSearchLoading.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
+    val hiddenQuickDirs by viewModel.hiddenQuickDirs.collectAsState()
     val pinnedFolders by viewModel.pinnedFolders.collectAsState()
     val folderSizeCache by viewModel.folderSizeCache.collectAsState()  // 触发重组使 FileItemRow 感知缓存更新
     val toastMessage by viewModel.toastMessage.collectAsState()
@@ -149,6 +150,7 @@ fun FileListScreen(
     val pickerMode by viewModel.pickerMode.collectAsState()
     val saveMode by viewModel.saveMode.collectAsState()
 
+    var showSettings by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
     var createDialogIsFolder by remember { mutableStateOf<Boolean?>(null) }
@@ -182,6 +184,17 @@ fun FileListScreen(
     }
 
     val pressBackHint = stringResource(R.string.press_back_again)
+
+    // 设置页: 全屏显示, 返回主界面
+    if (showSettings) {
+        SettingsScreen(
+            hiddenQuickDirs = hiddenQuickDirs,
+            onToggleQuickDir = { id, hidden -> viewModel.setQuickDirHidden(id, hidden) },
+            onBack = { showSettings = false }
+        )
+        return
+    }
+
     BackHandler(enabled = true) {
         when {
             drawerState.isOpen -> scope.launch { drawerState.close() }
@@ -301,6 +314,7 @@ fun FileListScreen(
                 currentPath = currentPath,
                 favorites = favorites,
                 showHidden = showHidden,
+                hiddenQuickDirs = hiddenQuickDirs,
                 onNavigate = { path ->
                     scope.launch { drawerState.close() }
                     viewModel.closeSearch()
@@ -308,7 +322,11 @@ fun FileListScreen(
                     viewModel.loadDirectory(path)
                 },
                 onRemoveFavorite = { viewModel.toggleFavorite(it) },
-                onToggleShowHidden = { viewModel.toggleShowHidden() }
+                onToggleShowHidden = { viewModel.toggleShowHidden() },
+                onOpenSettings = {
+                    scope.launch { drawerState.close() }
+                    showSettings = true
+                }
             )
         }
     ) {
