@@ -122,5 +122,5 @@ dependencies {
 
     implementation(libs.androidx.compose.ui.test.manifest)
     //noinspection UseTomlInstead
-    implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-alpha01")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-alpha02")
 }
