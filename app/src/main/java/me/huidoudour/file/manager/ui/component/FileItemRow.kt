@@ -1,7 +1,6 @@
 package me.huidoudour.file.manager.ui.component
 
 import android.content.Context
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -126,7 +125,6 @@ private fun iconTint(category: FileCategory): Color = when (category) {
     FileCategory.OTHER -> FileTintOther
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileItemRow(
     fileItem: FileItem,

@@ -2,8 +2,8 @@ name: Update Preview Versions
 
 on:
   schedule:
-    # Daily at UTC 04:00 (Beijing 12:00): check for preview version updates
-    - cron: "0 4 * * *"
+    # Daily at UTC 02:00 (Beijing 10:00): check for preview version updates
+    - cron: "0 2 * * *"
   workflow_dispatch:
 
 permissions:

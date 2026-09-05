@@ -1,10 +1,12 @@
 package me.huidoudour.file.manager.viewmodel
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.provider.OpenableColumns
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -55,8 +57,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     companion object {
         /** 存储根路径 */
-        val STORAGE_ROOT = Environment.getExternalStorageDirectory().absolutePath
+        val storageRoot: String = Environment.getExternalStorageDirectory().absolutePath
         /** 日期格式化 */
+        @SuppressLint("ConstantLocale")
         private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
         /** SharedPreferences 键 */
         private const val PREFS_NAME = "file_manager_prefs"
@@ -88,7 +91,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     // --- 状态 ---
 
-    private val _currentPath = MutableStateFlow(STORAGE_ROOT)
+    private val _currentPath = MutableStateFlow(storageRoot)
     val currentPath: StateFlow<String> = _currentPath.asStateFlow()
 
     private val _files = MutableStateFlow<List<FileItem>>(emptyList())
@@ -155,7 +158,6 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     /** 文件夹大小缓存 (路径 -> 包含总字节数的 DirStats) */
     private val _folderSizeCache = MutableStateFlow<Map<String, DirStats>>(emptyMap())
-    val folderSizeCache: StateFlow<Map<String, DirStats>> = _folderSizeCache.asStateFlow()
 
     private var sizeComputeJob: Job? = null
 
@@ -213,36 +215,17 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         _pickerMode.value = enabled
     }
 
-    fun isPickerMode(): Boolean = _pickerMode.value
-
     // --- 保存模式 (接收其他 App 分享/导出的文件) ---
 
     fun setSaveMode(enabled: Boolean) {
         _saveMode.value = enabled
     }
 
-    fun isSaveMode(): Boolean = _saveMode.value
-
     /** 设置待保存的数据 (从 Intent 中提取的 URI 和文本) */
     fun setSaveData(uris: List<Uri>, textContent: String? = null) {
         _saveData = SaveData(uris, textContent)
         _saveFileCount.value = uris.size + (if (!textContent.isNullOrBlank()) 1 else 0)
         _saveMode.value = true
-    }
-
-    /** 获取保存模式下的文件名预览 (仅用于 UI 提示) */
-    fun getSaveFileNames(): List<String> {
-        val data = _saveData ?: return emptyList()
-        val names = mutableListOf<String>()
-        val resolver = getApplication<Application>().contentResolver
-        for (uri in data.uris) {
-            val name = queryDisplayName(uri, resolver)
-            names.add(name)
-        }
-        if (!data.textContent.isNullOrBlank()) {
-            names.add(str(R.string.save_text_as_file))
-        }
-        return names
     }
 
     /**
@@ -259,7 +242,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         for (uri in data.uris) {
             try {
                 val name = queryDisplayName(uri, resolver)
-                val destFile = resolveDestFile(destDir, name, uri)
+                val destFile = resolveDestFile(destDir, name)
                 resolver.openInputStream(uri)?.use { input ->
                     destFile.outputStream().use { output ->
                         input.copyTo(output)
@@ -302,7 +285,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     /** 解决目标文件冲突：重名则添加序号 */
-    private fun resolveDestFile(dir: File, name: String, uri: Uri): File {
+    private fun resolveDestFile(dir: File, name: String): File {
         val baseName = name.ifBlank { "file_${System.currentTimeMillis()}" }
         val dotIndex = baseName.lastIndexOf('.')
         val stem = if (dotIndex > 0) baseName.substring(0, dotIndex) else baseName
@@ -386,7 +369,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
      */
     fun navigateUp(): Boolean {
         val currentPath = _currentPath.value
-        if (currentPath == STORAGE_ROOT || currentPath == "/") return false
+        if (currentPath == storageRoot || currentPath == "/") return false
 
         val parentFile = File(currentPath).parentFile
         if (parentFile != null && parentFile.canRead()) {
@@ -422,8 +405,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
      * 回到主目录 (存储根)
      */
     fun navigateHome() {
-        if (_currentPath.value != STORAGE_ROOT) {
-            loadDirectory(STORAGE_ROOT)
+        if (_currentPath.value != storageRoot) {
+            loadDirectory(storageRoot)
         }
     }
 
@@ -454,33 +437,6 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         return dateFormat.format(Date(timestamp))
     }
 
-    /**
-     * 获取文件路径各部分 (用于面包屑导航)
-     */
-    fun getPathSegments(path: String): List<Pair<String, String>> {
-        val segments = mutableListOf<Pair<String, String>>()
-        val parts = path.split(File.separator).filter { it.isNotEmpty() }
-        var accumulatedPath =
-            if (path.startsWith(File.separator)) File.separator else ""
-        for (part in parts) {
-            accumulatedPath = if (accumulatedPath.endsWith(File.separator))
-                accumulatedPath + part
-            else
-                accumulatedPath + File.separator + part
-
-            // 跳过存储根上方的系统路径（如 /storage、/storage/emulated），这些路径没有读取权限
-            if (accumulatedPath != STORAGE_ROOT &&
-                !accumulatedPath.startsWith(STORAGE_ROOT + File.separator))
-                continue
-
-            val displayName = if (accumulatedPath == STORAGE_ROOT)
-                str(R.string.internal_storage)
-            else part
-            segments.add(displayName to accumulatedPath)
-        }
-        return segments
-    }
-
     /** 清除错误信息 */
     fun clearError() {
         _errorMessage.value = null
@@ -491,7 +447,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
      */
     private fun saveCurrentPath() {
         if (!_pickerMode.value) {
-            prefs.edit().putString(KEY_LAST_PATH, _currentPath.value).apply()
+            prefs.edit { putString(KEY_LAST_PATH, _currentPath.value) }
         }
     }
 
@@ -506,7 +462,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 return saved
             }
         }
-        return STORAGE_ROOT
+        return storageRoot
     }
 
     /** File -> FileItem 转换 */
@@ -723,7 +679,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     fun toggleShowHidden() {
         val newValue = !_showHidden.value
         _showHidden.value = newValue
-        prefs.edit().putBoolean(KEY_SHOW_HIDDEN, newValue).apply()
+        prefs.edit { putBoolean(KEY_SHOW_HIDDEN, newValue) }
         refresh()
     }
 
@@ -734,12 +690,10 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     private fun loadHiddenQuickDirs(): Set<String> =
         prefs.getStringSet(KEY_HIDDEN_QUICK_DIRS, emptySet()).orEmpty()
 
-    fun isQuickDirHidden(id: String): Boolean = id in _hiddenQuickDirs.value
-
     fun setQuickDirHidden(id: String, hidden: Boolean) {
         val current = _hiddenQuickDirs.value.toMutableSet()
         if (hidden) current.add(id) else current.remove(id)
-        prefs.edit().putStringSet(KEY_HIDDEN_QUICK_DIRS, current).apply()
+        prefs.edit { putStringSet(KEY_HIDDEN_QUICK_DIRS, current) }
         _hiddenQuickDirs.value = current
     }
 
@@ -808,7 +762,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         val current = _favorites.value.toMutableSet()
         val added = current.add(path)
         if (!added) current.remove(path)
-        prefs.edit().putStringSet(KEY_FAVORITES, current).apply()
+        prefs.edit { putStringSet(KEY_FAVORITES, current) }
         _favorites.value = current.sortedBy { File(it).name.lowercase() }
         if (added) _toastMessage.value = str(R.string.favorite_added)
     }
@@ -836,13 +790,13 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     fun togglePinFolder(path: String) {
         val current = _pinnedFolders.value.toMutableSet()
         if (current.add(path)) {
-            prefs.edit().putStringSet(KEY_PINNED_FOLDERS, current).apply()
+            prefs.edit { putStringSet(KEY_PINNED_FOLDERS, current) }
             _pinnedFolders.value = current
             computeAndCacheSize(path)
             _toastMessage.value = str(R.string.pin_added)
         } else {
             current.remove(path)
-            prefs.edit().putStringSet(KEY_PINNED_FOLDERS, current).apply()
+            prefs.edit { putStringSet(KEY_PINNED_FOLDERS, current) }
             _pinnedFolders.value = current
             val newCache = _folderSizeCache.value.toMutableMap().apply { remove(path) }
             _folderSizeCache.value = newCache
@@ -894,7 +848,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 .append(lm)
                 .append('\n')
         }
-        prefs.edit().putString(KEY_SIZE_CACHE, sb.toString()).apply()
+        prefs.edit { putString(KEY_SIZE_CACHE, sb.toString()) }
     }
 
     /** 启动时恢复缓存：校验 lastModified，未变的直接恢复，已变的触发重算 */

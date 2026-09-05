@@ -1,24 +1,24 @@
 package me.huidoudour.file.manager.ui.component
 
-import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,7 +54,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -101,18 +100,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
 import me.huidoudour.file.manager.util.SortMode
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * 文件管理器主界面 — MT 管理器风格
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileListScreen(
     viewModel: FileManagerViewModel,
@@ -140,7 +138,6 @@ fun FileListScreen(
     val favorites by viewModel.favorites.collectAsState()
     val hiddenQuickDirs by viewModel.hiddenQuickDirs.collectAsState()
     val pinnedFolders by viewModel.pinnedFolders.collectAsState()
-    val folderSizeCache by viewModel.folderSizeCache.collectAsState()  // 触发重组使 FileItemRow 感知缓存更新
     val toastMessage by viewModel.toastMessage.collectAsState()
     val propertiesTarget by viewModel.propertiesTarget.collectAsState()
     val propertiesStats by viewModel.propertiesStats.collectAsState()
@@ -164,7 +161,7 @@ fun FileListScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val activity = LocalActivity.current
-    var lastBackPressTime by remember { mutableStateOf(0L) }
+    var lastBackPressTime by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
 
     val selectionMode = selectedPaths.isNotEmpty()
     val searching = isSearchActive && searchQuery.isNotBlank()
@@ -173,7 +170,7 @@ fun FileListScreen(
     val internalStorageLabel = stringResource(R.string.internal_storage)
     val currentDirName = remember(currentPath) {
         val name = File(currentPath).name
-        if (name.isEmpty()) internalStorageLabel else name
+        name.ifEmpty { internalStorageLabel }
     }
 
     LaunchedEffect(toastMessage) {
@@ -348,12 +345,7 @@ fun FileListScreen(
                         )
                         saveMode -> SaveModeTopBar(
                             currentDirName = currentDirName,
-                            onCancel = { onSaveCancelled?.invoke() },
-                            onNavigateBack = {
-                                if (!viewModel.navigateUp()) {
-                                    onSaveCancelled?.invoke()
-                                }
-                            }
+                            onCancel = { onSaveCancelled?.invoke() }
                         )
                         else -> NormalTopBar(
                             currentDirName = currentDirName,
@@ -425,7 +417,6 @@ fun FileListScreen(
                     ) {
                         SaveModeBar(
                             fileCount = saveFileCount,
-                            destDirName = currentDirName,
                             onSave = { onSaveConfirmed?.invoke() },
                             onCancel = { onSaveCancelled?.invoke() }
                         )
@@ -435,7 +426,7 @@ fun FileListScreen(
                         BottomNavBar(
                             canBack = canNavBack,
                             canForward = canNavForward,
-                            atRoot = currentPath == FileManagerViewModel.STORAGE_ROOT ||
+                            atRoot = currentPath == FileManagerViewModel.storageRoot ||
                                 currentPath == "/",
                             onBack = { viewModel.navigateBack() },
                             onForward = { viewModel.navigateForward() },
@@ -470,7 +461,7 @@ fun FileListScreen(
                             )
                         }
                     }
-                    displayedFiles.isEmpty() && errorMessage == null && !isLoading -> {
+                    displayedFiles.isEmpty() && errorMessage == null -> {
                         EmptyPlaceholder(
                             text = stringResource(R.string.dir_empty),
                             modifier = Modifier.align(Alignment.Center)
@@ -720,7 +711,6 @@ private fun FileActionMenu(
 // =============================================================================
 //  普通模式顶栏
 // =============================================================================
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NormalTopBar(
     currentDirName: String,
@@ -846,7 +836,6 @@ private fun NormalTopBar(
 // =============================================================================
 //  多选模式顶栏
 // =============================================================================
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectionTopBar(
     count: Int,
@@ -889,7 +878,6 @@ private fun SelectionTopBar(
 // =============================================================================
 //  搜索顶栏
 // =============================================================================
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchTopBar(
     query: String,
@@ -951,12 +939,10 @@ private fun SearchTopBar(
 // =============================================================================
 //  保存模式顶栏 (接收其他 App 分享的文件)
 // =============================================================================
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SaveModeTopBar(
     currentDirName: String,
-    onCancel: () -> Unit,
-    onNavigateBack: () -> Unit
+    onCancel: () -> Unit
 ) {
     TopAppBar(
         title = {
@@ -999,7 +985,6 @@ private fun SaveModeTopBar(
 @Composable
 private fun SaveModeBar(
     fileCount: Int,
-    destDirName: String,
     onSave: () -> Unit,
     onCancel: () -> Unit
 ) {
@@ -1334,11 +1319,11 @@ private fun buildPathSegments(path: String, rootLabel: String): List<Pair<String
             accumulatedPath + File.separator + part
 
         // 跳过存储根上方的系统路径（如 /storage、/storage/emulated），这些路径没有读取权限
-        if (accumulatedPath != FileManagerViewModel.STORAGE_ROOT &&
-            !accumulatedPath.startsWith(FileManagerViewModel.STORAGE_ROOT + File.separator))
+        if (accumulatedPath != FileManagerViewModel.storageRoot &&
+            !accumulatedPath.startsWith(FileManagerViewModel.storageRoot + File.separator))
             continue
 
-        val displayName = if (accumulatedPath == FileManagerViewModel.STORAGE_ROOT) rootLabel
+        val displayName = if (accumulatedPath == FileManagerViewModel.storageRoot) rootLabel
             else if (part.length > 16) part.take(13) + ".."
             else part
         segments.add(displayName to accumulatedPath)

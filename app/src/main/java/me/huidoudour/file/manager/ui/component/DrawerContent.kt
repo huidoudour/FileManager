@@ -69,7 +69,7 @@ fun buildAllQuickDirs(): List<QuickDir> {
         Environment.getExternalStoragePublicDirectory(type).absolutePath
 
     return listOf(
-        QuickDir(FileManagerViewModel.QUICK_DIR_INTERNAL, R.string.internal_storage, FileManagerViewModel.STORAGE_ROOT, Icons.Filled.PhoneAndroid),
+        QuickDir(FileManagerViewModel.QUICK_DIR_INTERNAL, R.string.internal_storage, FileManagerViewModel.storageRoot, Icons.Filled.PhoneAndroid),
         QuickDir(FileManagerViewModel.QUICK_DIR_DOWNLOADS, R.string.quick_downloads, publicDir(Environment.DIRECTORY_DOWNLOADS), Icons.Filled.Download),
         QuickDir(FileManagerViewModel.QUICK_DIR_CAMERA, R.string.quick_camera, publicDir(Environment.DIRECTORY_DCIM), Icons.Filled.PhotoCamera),
         QuickDir(FileManagerViewModel.QUICK_DIR_PICTURES, R.string.quick_pictures, publicDir(Environment.DIRECTORY_PICTURES), Icons.Filled.Image),

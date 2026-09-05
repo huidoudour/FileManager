@@ -53,8 +53,7 @@ object FileOperationUtil {
 
     /** 移动: 优先重命名, 跨卷失败时降级为 复制+删除 */
     fun move(src: File, dest: File, onProgress: ((String) -> Unit)? = null): Boolean {
-        if (src.renameTo(dest)) return true
-        return copyRecursively(src, dest, onProgress) && deleteRecursively(src)
+        return src.renameTo(dest) || copyRecursively(src, dest, onProgress) && deleteRecursively(src)
     }
 
     /**

@@ -100,13 +100,11 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         intent?.let {
             val action = it.action
-            when {
-                action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE -> {
+            when (action) {
+                Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE -> {
                     handleSendIntent(it)
                 }
-                action == Intent.ACTION_OPEN_DOCUMENT ||
-                action == Intent.ACTION_GET_CONTENT ||
-                action == Intent.ACTION_PICK -> {
+                Intent.ACTION_OPEN_DOCUMENT, Intent.ACTION_GET_CONTENT, Intent.ACTION_PICK -> {
                     isPickerMode = true
                     viewModel.setPickerMode(true)
                 }

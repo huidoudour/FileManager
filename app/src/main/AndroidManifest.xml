@@ -3,6 +3,12 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- 声明需要查询的其他应用包（Android 11+ 包可见性） -->
+    <uses-permission
+        android:name="me.huidoudour.file.manager.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        tools:node="remove" />
+    <permission
+        android:name="me.huidoudour.file.manager.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        tools:node="remove" />
     <queries>
         <package android:name="io.github.huidoudour.Installer" />
     </queries>
