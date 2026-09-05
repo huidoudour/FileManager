@@ -97,6 +97,11 @@ android {
             excludes += setOf("**/libandroidx.graphics.path.so")
         }
     }
+
+    lint {
+        // 文件管理器需完整访问媒体库，关闭 Android 14+ 部分媒体访问相关检查
+        disable += setOf("SelectedPhotoAccess", "PhotoAndVideoPolicy")
+    }
 }
 
 dependencies {

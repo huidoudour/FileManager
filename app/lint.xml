@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- 文件管理器需要完整访问媒体库，未声明 READ_MEDIA_VISUAL_USER_SELECTED 导致 -->
+    <issue id="SelectedPhotoAccess" severity="ignore" />
+    <issue id="PhotoAndVideoPolicy" severity="ignore" />
+</lint>
