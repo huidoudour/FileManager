@@ -29,7 +29,9 @@ val appVersionName = "${baseVersionName}.${gitCommitCount()}.${gitHash()}"
 android {
     namespace = "me.huidoudour.file.manager"
     compileSdk {
-        version = release(37)
+        version = release(37) {
+            minorApiLevel = 2
+        }
     }
 
     defaultConfig {
@@ -127,5 +129,5 @@ dependencies {
 
     implementation(libs.androidx.compose.ui.test.manifest)
     //noinspection UseTomlInstead
-    implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-alpha02")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-alpha03")
 }
