@@ -1,0 +1,43 @@
+name: Android Compile
+
+# Triggered by pull requests only; PRs may target any branch
+on:
+  pull_request:
+
+# Forced-push friendly: every new push (including force push) to the same PR
+# starts a new run and cancels the old one, keeping only the latest result
+concurrency:
+  group: android-compile-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    name: PR Compile Check
+    runs-on: ubuntu-latest
+    steps:
+      # Version numbering depends on the commit count; fetch the full history
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Initialize SDK Manager and accept licenses; missing Platform 37 is downloaded by AGP
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Enable Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      # Compile-only check: compile Kotlin/Java sources for the debug variant
+      # without dexing, packaging or signing an APK
+      - name: Compile debug sources (full warnings)
+        run: |
+          # gradlew may lose its executable bit after checkout; restore it first
+          chmod +x gradlew
+          ./gradlew compileDebugSources --warning-mode all

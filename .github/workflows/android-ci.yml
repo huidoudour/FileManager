@@ -1,18 +1,19 @@
 name: Android CI
 
-# Triggered by pull requests only; PRs may target any branch
+# Triggered on every push to master
 on:
-  pull_request:
+  push:
+    branches:
+      - master
 
-# Forced-push friendly: every new push (including force push) to the same PR
-# starts a new run and cancels the old one, keeping only the latest build result
+# Keep every master build: each push produces a distinct release artifact
 concurrency:
-  group: android-ci-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
-    name: CI Build
+    name: Release Build
     runs-on: ubuntu-latest
     steps:
       # Version numbering depends on the commit count; fetch the full history
@@ -34,14 +35,16 @@ jobs:
       - name: Enable Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Debug build (full warnings)
+      # No signing properties are passed, so the release build type falls back
+      # to the debug signing config and produces a runnable release APK
+      - name: Release build (full warnings)
         run: |
           # gradlew may lose its executable bit after checkout; restore it first
           chmod +x gradlew
-          ./gradlew assembleDebug --warning-mode all
+          ./gradlew assembleRelease --warning-mode all
 
-      - name: Upload Debug APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: release-apk
+          path: app/build/outputs/apk/release/*.apk
