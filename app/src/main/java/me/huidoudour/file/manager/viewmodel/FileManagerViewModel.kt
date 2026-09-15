@@ -53,6 +53,9 @@ data class SaveData(
     val textContent: String? = null
 )
 
+/** 应用主题模式 */
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
 class FileManagerViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
@@ -69,6 +72,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         private const val KEY_PINNED_FOLDERS = "pinned_folders"
         private const val KEY_SIZE_CACHE = "size_cache"
         private const val KEY_HIDDEN_QUICK_DIRS = "hidden_quick_dirs"
+        private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_SHOW_THUMBNAILS = "show_thumbnails"
         /** 搜索结果上限 */
         private const val MAX_SEARCH_RESULTS = 300
 
@@ -132,6 +137,14 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     /** 侧栏中被隐藏的快捷目录 id 集合 */
     private val _hiddenQuickDirs = MutableStateFlow(loadHiddenQuickDirs())
     val hiddenQuickDirs: StateFlow<Set<String>> = _hiddenQuickDirs.asStateFlow()
+
+    /** 主题模式 (跟随系统 / 浅色 / 深色) */
+    private val _themeMode = MutableStateFlow(loadThemeMode())
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    /** 是否加载图片/视频缩略图 */
+    private val _showThumbnails = MutableStateFlow(prefs.getBoolean(KEY_SHOW_THUMBNAILS, true))
+    val showThumbnails: StateFlow<Boolean> = _showThumbnails.asStateFlow()
 
     /** 搜索状态 */
     private val _isSearchActive = MutableStateFlow(false)
@@ -695,6 +708,24 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         if (hidden) current.add(id) else current.remove(id)
         prefs.edit { putStringSet(KEY_HIDDEN_QUICK_DIRS, current) }
         _hiddenQuickDirs.value = current
+    }
+
+    // =========================================================================
+    //  外观设置 (主题 / 缩略图)
+    // =========================================================================
+
+    private fun loadThemeMode(): ThemeMode =
+        ThemeMode.entries.firstOrNull { it.name == prefs.getString(KEY_THEME_MODE, null) }
+            ?: ThemeMode.SYSTEM
+
+    fun setThemeMode(mode: ThemeMode) {
+        _themeMode.value = mode
+        prefs.edit { putString(KEY_THEME_MODE, mode.name) }
+    }
+
+    fun setShowThumbnails(enabled: Boolean) {
+        _showThumbnails.value = enabled
+        prefs.edit { putBoolean(KEY_SHOW_THUMBNAILS, enabled) }
     }
 
     // =========================================================================

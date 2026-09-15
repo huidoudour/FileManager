@@ -137,6 +137,8 @@ fun FileListScreen(
     val isSearchLoading by viewModel.isSearchLoading.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
     val hiddenQuickDirs by viewModel.hiddenQuickDirs.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
+    val showThumbnails by viewModel.showThumbnails.collectAsState()
     val pinnedFolders by viewModel.pinnedFolders.collectAsState()
     val toastMessage by viewModel.toastMessage.collectAsState()
     val propertiesTarget by viewModel.propertiesTarget.collectAsState()
@@ -186,7 +188,11 @@ fun FileListScreen(
     if (showSettings) {
         SettingsScreen(
             hiddenQuickDirs = hiddenQuickDirs,
+            themeMode = themeMode,
+            showThumbnails = showThumbnails,
             onToggleQuickDir = { id, hidden -> viewModel.setQuickDirHidden(id, hidden) },
+            onThemeModeChange = { viewModel.setThemeMode(it) },
+            onShowThumbnailsChange = { viewModel.setShowThumbnails(it) },
             onBack = { showSettings = false }
         )
         return
@@ -499,6 +505,7 @@ fun FileListScreen(
                                         selectionMode = selectionMode,
                                         isFavorite = fileItem.path in favorites,
                                         isMenuShown = actionTarget?.path == fileItem.path,
+                                        showThumbnails = showThumbnails,
                                         onItemClick = {
                                             if (blockItemClicks) {
                                                 blockItemClicks = false

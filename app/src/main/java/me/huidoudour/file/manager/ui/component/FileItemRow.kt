@@ -134,6 +134,7 @@ fun FileItemRow(
     selectionMode: Boolean = false,
     isFavorite: Boolean = false,
     isMenuShown: Boolean = false,
+    showThumbnails: Boolean = true,
     onItemClick: () -> Unit,
     onItemLongClick: ((Offset) -> Unit)? = null
 ) {
@@ -191,7 +192,9 @@ fun FileItemRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // ======== 图标 / 缩略图 ========
-            if (category == FileCategory.IMAGE || category == FileCategory.VIDEO) {
+            if (showThumbnails &&
+                (category == FileCategory.IMAGE || category == FileCategory.VIDEO)
+            ) {
                 val context = LocalContext.current
                 AsyncImage(
                     model = ImageRequest.Builder(context)

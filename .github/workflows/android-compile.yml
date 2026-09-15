@@ -27,9 +27,14 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # Initialize SDK Manager and accept licenses; missing Platform 37 is downloaded by AGP
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # Accept SDK licenses with the runner's preinstalled sdkmanager; AGP then
+      # downloads any missing Platform 37. android-actions/setup-android is avoided
+      # because it runs `sdkmanager tools`, a package that has been removed from
+      # the SDK repository, which makes the step fail with exit code 1.
+      - name: Accept Android SDK licenses
+        run: |
+          SDKMANAGER="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
 
       - name: Enable Gradle cache
         uses: gradle/actions/setup-gradle@v4

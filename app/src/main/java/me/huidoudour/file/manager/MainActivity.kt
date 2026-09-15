@@ -13,6 +13,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
@@ -23,6 +26,7 @@ import me.huidoudour.file.manager.model.FileItem
 import me.huidoudour.file.manager.ui.component.FileListScreen
 import me.huidoudour.file.manager.ui.theme.FileManagerTheme
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
+import me.huidoudour.file.manager.viewmodel.ThemeMode
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -57,7 +61,13 @@ class MainActivity : ComponentActivity() {
         requestStoragePermissions()
 
         setContent {
-            FileManagerTheme {
+            val themeMode by viewModel.themeMode.collectAsState()
+            val darkTheme = when (themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            FileManagerTheme(darkTheme = darkTheme) {
                 FileListScreen(
                     viewModel = viewModel,
                     onFileSelected = { file ->
