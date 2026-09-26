@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    退出（关闭）时的窗口转场动画。
+    只做整体淡出，让本应用窗口与背后的调用方界面产生一次柔和的交叉淡入淡出，
+    避免界面内容淡出后窗口"啪"地一下消失。
+-->
+<alpha xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="200"
+    android:fromAlpha="1.0"
+    android:interpolator="@android:interpolator/decelerate_quad"
+    android:toAlpha="0.0" />

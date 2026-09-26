@@ -1,6 +1,5 @@
 package me.huidoudour.file.manager.ui.component
 
-import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -65,8 +64,6 @@ fun SettingsScreen(
     onShowThumbnailsChange: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
-    BackHandler { onBack() }
-
     val quickDirs = remember { buildAllQuickDirs() }
     var showThemeDialog by remember { mutableStateOf(false) }
 

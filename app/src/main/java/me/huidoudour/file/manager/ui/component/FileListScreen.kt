@@ -1,7 +1,6 @@
 package me.huidoudour.file.manager.ui.component
 
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -103,6 +102,7 @@ import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.launch
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
+import me.huidoudour.file.manager.ui.anim.PredictiveBackScreen
 import me.huidoudour.file.manager.util.SortMode
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
@@ -162,8 +162,6 @@ fun FileListScreen(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val activity = LocalActivity.current
-    var lastBackPressTime by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
 
     val selectionMode = selectedPaths.isNotEmpty()
     val searching = isSearchActive && searchQuery.isNotBlank()
@@ -182,50 +180,22 @@ fun FileListScreen(
         }
     }
 
-    val pressBackHint = stringResource(R.string.press_back_again)
+    // 当前目录是否还能返回上级
+    val canNavigateUp =
+        currentPath != "/" && currentPath != FileManagerViewModel.storageRoot
 
-    // 设置页: 全屏显示, 返回主界面
-    if (showSettings) {
-        SettingsScreen(
-            hiddenQuickDirs = hiddenQuickDirs,
-            themeMode = themeMode,
-            showThumbnails = showThumbnails,
-            onToggleQuickDir = { id, hidden -> viewModel.setQuickDirHidden(id, hidden) },
-            onThemeModeChange = { viewModel.setThemeMode(it) },
-            onShowThumbnailsChange = { viewModel.setShowThumbnails(it) },
-            onBack = { showSettings = false }
-        )
-        return
-    }
+    // 根目录（或界面上没有可处理的返回动作）时，不要把返回事件拦下来：
+    // 只有「应用内没有回调拦截返回」时，系统才会播放预测性返回动画
+    // （窗口随手指缩小、并实时预览即将返回的调用方界面 / 主屏幕）。
+    val handleBackInternally = drawerState.isOpen || selectionMode || isSearchActive || canNavigateUp
 
-    BackHandler(enabled = true) {
+    BackHandler(enabled = handleBackInternally) {
         when {
             drawerState.isOpen -> scope.launch { drawerState.close() }
             selectionMode -> viewModel.clearSelection()
             isSearchActive -> viewModel.closeSearch()
-            saveMode -> {
-                if (!viewModel.navigateUp()) {
-                    onSaveCancelled?.invoke()
-                }
-            }
-            pickerMode -> {
-                if (!viewModel.navigateUp()) {
-                    onPickCancelled?.invoke()
-                }
-            }
-            else -> {
-                if (!viewModel.navigateUp()) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastBackPressTime < 2000L) {
-                        activity?.finish()
-                    } else {
-                        lastBackPressTime = now
-                        scope.launch {
-                            snackbarHostState.showSnackbar(pressBackHint)
-                        }
-                    }
-                }
-            }
+            // 剩余情况只会是"还能返回上级目录"
+            else -> viewModel.navigateUp()
         }
     }
 
@@ -593,6 +563,22 @@ fun FileListScreen(
                         )
                 )
             }
+        }
+    }
+
+    // 设置页：叠在主界面上层（而不是替换主界面），
+    // 这样返回手势滑出时露出的是真实的主界面，能看到"揭开"的效果。
+    if (showSettings) {
+        PredictiveBackScreen(onBack = { showSettings = false }) { requestBack ->
+            SettingsScreen(
+                hiddenQuickDirs = hiddenQuickDirs,
+                themeMode = themeMode,
+                showThumbnails = showThumbnails,
+                onToggleQuickDir = { id, hidden -> viewModel.setQuickDirHidden(id, hidden) },
+                onThemeModeChange = { viewModel.setThemeMode(it) },
+                onShowThumbnailsChange = { viewModel.setShowThumbnails(it) },
+                onBack = requestBack
+            )
         }
     }
 }
