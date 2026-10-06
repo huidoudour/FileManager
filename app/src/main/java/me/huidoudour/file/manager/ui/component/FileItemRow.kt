@@ -1,59 +1,41 @@
 package me.huidoudour.file.manager.ui.component
 
 import android.content.Context
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.Android
-import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,24 +45,31 @@ import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
-import me.huidoudour.file.manager.ui.theme.FileTintApk
-import me.huidoudour.file.manager.ui.theme.FileTintArchive
-import me.huidoudour.file.manager.ui.theme.FileTintAudio
-import me.huidoudour.file.manager.ui.theme.FileTintCode
-import me.huidoudour.file.manager.ui.theme.FileTintDocument
 import me.huidoudour.file.manager.ui.theme.FileTintFolder
-import me.huidoudour.file.manager.ui.theme.FileTintImage
-import me.huidoudour.file.manager.ui.theme.FileTintOther
-import me.huidoudour.file.manager.ui.theme.FileTintPdf
-import me.huidoudour.file.manager.ui.theme.FileTintVideo
 import me.huidoudour.file.manager.util.FileCategory
 import me.huidoudour.file.manager.util.FileTypeUtil
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
 
 // =============================================================================
-//  MD3 风格 — 分类色调圆形图标容器 + 圆角列表项
+//  MaterialFiles 风格列表项
+//  - 行高 72dp, 左侧 48dp 图标触摸区 (40dp 彩色图标), 右侧 48dp 三点菜单按钮
+//  - 选中时图标右下角显示圆形对勾徽章, 行本身无背景色变化
 // =============================================================================
+
+/** 单条文件的长按/菜单操作 */
+enum class FileAction(val labelRes: Int) {
+    COPY(R.string.action_copy),
+    CUT(R.string.action_cut),
+    DELETE(R.string.action_delete),
+    RENAME(R.string.action_rename),
+    SHARE(R.string.action_share),
+    FAVORITE(R.string.action_favorite),
+    PIN_SIZE(R.string.action_pin_size),
+    REFRESH_SIZE(R.string.action_refresh_size),
+    PROPERTIES(R.string.action_properties),
+    MULTI_SELECT(R.string.action_multi_select)
+}
 
 /** 缩略图 ImageLoader 单例 (支持视频帧) */
 private object ThumbnailLoader {
@@ -97,101 +86,65 @@ private object ThumbnailLoader {
         }
 }
 
-/** 文件图标 (MT 风格: 文件夹暖黄, 其他统一灰色) */
-private fun fileIcon(category: FileCategory): ImageVector = when (category) {
-    FileCategory.FOLDER -> Icons.Filled.Folder
-    FileCategory.IMAGE -> Icons.Filled.Image
-    FileCategory.VIDEO -> Icons.Filled.Movie
-    FileCategory.AUDIO -> Icons.Filled.MusicNote
-    FileCategory.DOCUMENT -> Icons.Filled.Description
-    FileCategory.PDF -> Icons.Filled.PictureAsPdf
-    FileCategory.ARCHIVE -> Icons.Filled.Archive
-    FileCategory.CODE -> Icons.Filled.Code
-    FileCategory.APK -> Icons.Filled.Android
-    FileCategory.OTHER -> Icons.AutoMirrored.Filled.InsertDriveFile
-}
-
-/** 图标着色 (MD3 风格: 按分类着色, 配浅色调容器背景) */
-private fun iconTint(category: FileCategory): Color = when (category) {
-    FileCategory.FOLDER -> FileTintFolder
-    FileCategory.IMAGE -> FileTintImage
-    FileCategory.VIDEO -> FileTintVideo
-    FileCategory.AUDIO -> FileTintAudio
-    FileCategory.DOCUMENT -> FileTintDocument
-    FileCategory.PDF -> FileTintPdf
-    FileCategory.ARCHIVE -> FileTintArchive
-    FileCategory.CODE -> FileTintCode
-    FileCategory.APK -> FileTintApk
-    FileCategory.OTHER -> FileTintOther
+/** 文件类型彩色图标 (照搬 MaterialFiles 的 file_*_icon 系列) */
+@DrawableRes
+private fun fileIconRes(category: FileCategory): Int = when (category) {
+    FileCategory.FOLDER -> R.drawable.file_directory_icon
+    FileCategory.IMAGE -> R.drawable.file_image_icon
+    FileCategory.VIDEO -> R.drawable.file_video_icon
+    FileCategory.AUDIO -> R.drawable.file_audio_icon
+    FileCategory.DOCUMENT -> R.drawable.file_document_icon
+    FileCategory.PDF -> R.drawable.file_pdf_icon
+    FileCategory.ARCHIVE -> R.drawable.file_archive_icon
+    FileCategory.CODE -> R.drawable.file_code_icon
+    FileCategory.APK -> R.drawable.file_apk_icon
+    FileCategory.OTHER -> R.drawable.file_generic_icon
 }
 
 @Composable
 fun FileItemRow(
     fileItem: FileItem,
     viewModel: FileManagerViewModel,
-    isSelected: Boolean = false,
     isChecked: Boolean = false,
-    selectionMode: Boolean = false,
     isFavorite: Boolean = false,
     isMenuShown: Boolean = false,
     showThumbnails: Boolean = true,
     onItemClick: () -> Unit,
-    onItemLongClick: ((Offset) -> Unit)? = null
+    onIconClick: () -> Unit = {},
+    onItemLongClick: (() -> Unit)? = null,
+    onMenuClick: () -> Unit = {},
+    onMenuDismiss: () -> Unit = {},
+    onAction: (FileAction) -> Unit = {}
 ) {
     val category = FileTypeUtil.getCategory(fileItem)
-    val icon = fileIcon(category)
-
-    // 记录最后一次按下的位置 (相对行左上角), 供菜单展开期间保持按压涟漪
-    var pressPosition by remember { mutableStateOf(Offset.Zero) }
+    val iconRes = fileIconRes(category)
     val interactionSource = remember { MutableInteractionSource() }
 
-    // 菜单展开时注入合成按压, 保留长按特效; 菜单关闭 (取消/执行操作) 时释放
-    var heldPress by remember { mutableStateOf<PressInteraction.Press?>(null) }
-    LaunchedEffect(isMenuShown) {
-        if (isMenuShown) {
-            val press = PressInteraction.Press(pressPosition)
-            interactionSource.emit(press)
-            heldPress = press
-        } else {
-            heldPress?.let {
-                interactionSource.emit(PressInteraction.Release(it))
-                heldPress = null
-            }
-        }
-    }
-
-    val rowBg = when {
-        isChecked -> MaterialTheme.colorScheme.secondaryContainer
-        isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-        else -> Color.Transparent
-    }
-
-    Column {
-        Row(
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onItemClick,
+                onLongClick = onItemLongClick
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // ======== 图标 / 缩略图 (48dp 触摸区, 40dp 内容, 点击切换选择) ========
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 2.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(rowBg)
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(
-                            requireUnconsumed = false,
-                            pass = PointerEventPass.Initial
-                        )
-                        pressPosition = down.position
-                    }
-                }
-                .combinedClickable(
-                    interactionSource = interactionSource,
+                .padding(start = 12.dp, end = 12.dp)
+                .size(48.dp)
+                .clip(CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
                     indication = LocalIndication.current,
-                    onClick = onItemClick,
-                    onLongClick = onItemLongClick?.let { cb -> { cb(pressPosition) } }
-                )
-                .padding(horizontal = 10.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
+                    onClick = onIconClick
+                ),
+            contentAlignment = Alignment.Center
         ) {
-            // ======== 图标 / 缩略图 ========
             if (showThumbnails &&
                 (category == FileCategory.IMAGE || category == FileCategory.VIDEO)
             ) {
@@ -202,107 +155,166 @@ fun FileItemRow(
                         .build(),
                     imageLoader = ThumbnailLoader.get(context),
                     contentDescription = stringResource(category.labelRes),
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp)),
+                    modifier = Modifier.size(40.dp),
                     contentScale = ContentScale.Crop,
-                    error = rememberVectorPainter(icon),
-                    fallback = rememberVectorPainter(icon)
+                    error = painterResource(iconRes),
+                    fallback = painterResource(iconRes)
                 )
             } else {
-                val tint = iconTint(category)
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = stringResource(category.labelRes),
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+
+            // 选中徽章: 右下角 18dp 圆形对勾 (primary 底 + onPrimary 勾)
+            if (isChecked) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .align(Alignment.BottomEnd)
+                        .size(18.dp)
                         .clip(CircleShape)
-                        .background(tint.copy(alpha = 0.14f)),
+                        .background(MaterialTheme.colorScheme.primary),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = icon,
-                        contentDescription = stringResource(category.labelRes),
-                        modifier = Modifier.size(22.dp),
-                        tint = tint
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // ======== 文件名 + 元信息 ========
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = fileItem.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                        color = if (fileItem.canRead)
-                            MaterialTheme.colorScheme.onSurface
-                        else
-                            MaterialTheme.colorScheme.error
-                    )
-                    if (isFavorite) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.Filled.Star,
-                            contentDescription = stringResource(R.string.favorite_added),
-                            modifier = Modifier.size(14.dp),
-                            tint = FileTintFolder
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(
-                        text = viewModel.formatDate(fileItem.lastModified),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = if (fileItem.isDirectory) {
-                            val cache = viewModel.getCachedFolderSize(fileItem.path)
-                            when {
-                                cache != null -> FileItem.formatSize(cache.size)
-                                viewModel.isPinned(fileItem.path) -> stringResource(R.string.pin_calculating)
-                                else -> "--"
-                            }
-                        } else FileItem.formatSize(fileItem.size),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (fileItem.isDirectory && viewModel.isPinned(fileItem.path))
-                            MaterialTheme.colorScheme.tertiary
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            // ======== 右侧: 复选框 / 目录箭头 / 扩展名 ========
-            Spacer(modifier = Modifier.width(8.dp))
-            when {
-                selectionMode -> {
-                    Checkbox(
-                        checked = isChecked,
-                        onCheckedChange = { onItemClick() }
-                    )
-                }
-                fileItem.isDirectory -> {
-                    Icon(
-                        imageVector = Icons.Filled.ChevronRight,
+                        imageVector = Icons.Filled.Check,
                         contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
-                }
-                else -> {
-                    Text(
-                        text = fileItem.extension.uppercase().take(5),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        modifier = Modifier.size(12.dp),
+                        tint = MaterialTheme.colorScheme.onPrimary
                     )
                 }
             }
+        }
+
+        // ======== 文件名 + 描述 ========
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = fileItem.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                    color = if (fileItem.canRead)
+                        MaterialTheme.colorScheme.onSurface
+                    else
+                        MaterialTheme.colorScheme.error
+                )
+                if (isFavorite) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = stringResource(R.string.favorite_added),
+                        modifier = Modifier.size(14.dp),
+                        tint = FileTintFolder
+                    )
+                }
+            }
+            // 描述行: 文件显示 "修改时间 · 大小"; 文件夹仅在计算/已缓存大小时显示
+            val description = if (fileItem.isDirectory) {
+                val cache = viewModel.getCachedFolderSize(fileItem.path)
+                when {
+                    cache != null -> FileItem.formatSize(cache.size)
+                    viewModel.isPinned(fileItem.path) -> stringResource(R.string.pin_calculating)
+                    else -> null
+                }
+            } else {
+                "${viewModel.formatDate(fileItem.lastModified)} · ${FileItem.formatSize(fileItem.size)}"
+            }
+            if (description != null) {
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (fileItem.isDirectory && viewModel.isPinned(fileItem.path))
+                        MaterialTheme.colorScheme.tertiary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        // ======== 右侧三点菜单按钮 ========
+        Box(modifier = Modifier.padding(start = 8.dp, end = 8.dp)) {
+            IconButton(
+                onClick = onMenuClick,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = stringResource(R.string.more),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            FileActionMenu(
+                expanded = isMenuShown,
+                item = fileItem,
+                isFavorite = isFavorite,
+                isPinned = viewModel.isPinned(fileItem.path),
+                onAction = onAction,
+                onDismiss = onMenuDismiss
+            )
+        }
+    }
+}
+
+/** 三点按钮弹出的操作菜单 (照搬 MaterialFiles 的 file_item 菜单形态) */
+@Composable
+private fun FileActionMenu(
+    expanded: Boolean,
+    item: FileItem,
+    isFavorite: Boolean,
+    isPinned: Boolean,
+    onAction: (FileAction) -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (!expanded) return
+
+    val actions = buildList {
+        add(FileAction.CUT.labelRes to FileAction.CUT)
+        add(FileAction.COPY.labelRes to FileAction.COPY)
+        add(FileAction.DELETE.labelRes to FileAction.DELETE)
+        add(FileAction.RENAME.labelRes to FileAction.RENAME)
+        if (!item.isDirectory) add(FileAction.SHARE.labelRes to FileAction.SHARE)
+        if (item.isDirectory) {
+            add(
+                (if (isFavorite) R.string.action_unfavorite else R.string.action_favorite)
+                    to FileAction.FAVORITE
+            )
+            if (isPinned) {
+                add(R.string.action_refresh_size to FileAction.REFRESH_SIZE)
+                add(R.string.action_unpin_size to FileAction.PIN_SIZE)
+            } else {
+                add(R.string.action_pin_size to FileAction.PIN_SIZE)
+            }
+        }
+        add(FileAction.PROPERTIES.labelRes to FileAction.PROPERTIES)
+        add(FileAction.MULTI_SELECT.labelRes to FileAction.MULTI_SELECT)
+    }
+
+    DropdownMenu(
+        expanded = true,
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(4.dp)
+    ) {
+        actions.forEach { (labelRes, action) ->
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = stringResource(labelRes),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (action == FileAction.DELETE)
+                            MaterialTheme.colorScheme.error
+                        else
+                            MaterialTheme.colorScheme.onSurface
+                    )
+                },
+                onClick = { onAction(action) }
+            )
         }
     }
 }

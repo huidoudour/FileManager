@@ -22,9 +22,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 /**
  * 主动退出（关闭）时的动画风格。
  *
- * 两者都走同一套"轻微缩放 + 淡出"的动作，只是节奏略有区别。
+ * 三者都走同一套"轻微缩放 + 淡出"的动作，只是节奏略有区别。
  *
- * 注意：这里的风格只用于**用户主动触发**的退出（点取消、选取完成、保存完成）。
+ * 注意：这里的风格只用于**用户主动触发**的退出（点取消、选取完成、保存完成、菜单退出应用）。
  * 返回手势 / 返回键回到根目录时不会走这里，而是把返回交还给系统，
  * 由系统播放预测性返回动画（窗口随手指缩小并实时预览即将返回的界面）。
  */
@@ -33,7 +33,10 @@ enum class ExitStyle {
     RETURN_RESULT,
 
     /** 用户主动取消（取消按钮） */
-    CANCEL
+    CANCEL,
+
+    /** 用户主动退出应用（右上角菜单触发） */
+    EXIT
 }
 
 /**
@@ -55,6 +58,9 @@ private fun specOf(style: ExitStyle): ExitSpec = when (style) {
 
     // 取消：最快、几乎没有缩放，干脆利落
     ExitStyle.CANCEL -> ExitSpec(durationMillis = 150, targetScale = 0.99f)
+
+    // 主动退出应用：一次轻缓的谢幕，比取消多一丝仪式感
+    ExitStyle.EXIT -> ExitSpec(durationMillis = 200, targetScale = 0.97f)
 }
 
 /**

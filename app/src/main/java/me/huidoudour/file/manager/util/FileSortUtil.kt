@@ -54,33 +54,31 @@ object NaturalOrderComparator : Comparator<String> {
 
 object FileSortUtil {
     /**
-     * 对文件列表排序：目录在前、文件在后，然后按指定方式排序
+     * 对文件列表排序
+     *
+     * @param directoriesFirst 为 true 时目录排在文件前 (照搬 MaterialFiles 的 sortDirectoriesFirst)
      */
-    fun sort(files: List<FileItem>, mode: SortMode, ascending: Boolean = true): List<FileItem> {
-        val directories = files.filter { it.isDirectory }.let { dirs ->
-            when (mode) {
-                SortMode.NAME -> if (ascending) dirs.sortedWith(compareBy(NaturalOrderComparator) { it.name })
-                    else dirs.sortedWith(compareBy(NaturalOrderComparator.reversed()) { it.name })
-                SortMode.SIZE -> if (ascending) dirs.sortedBy { it.size }
-                    else dirs.sortedByDescending { it.size }
-                SortMode.DATE -> if (ascending) dirs.sortedBy { it.lastModified }
-                    else dirs.sortedByDescending { it.lastModified }
-                SortMode.TYPE -> if (ascending) dirs.sortedBy { it.extension }
-                    else dirs.sortedByDescending { it.extension }
-            }
+    fun sort(
+        files: List<FileItem>,
+        mode: SortMode,
+        ascending: Boolean = true,
+        directoriesFirst: Boolean = true
+    ): List<FileItem> {
+        fun sortList(list: List<FileItem>): List<FileItem> = when (mode) {
+            SortMode.NAME -> if (ascending) list.sortedWith(compareBy(NaturalOrderComparator) { it.name })
+                else list.sortedWith(compareBy(NaturalOrderComparator.reversed()) { it.name })
+            SortMode.SIZE -> if (ascending) list.sortedBy { it.size }
+                else list.sortedByDescending { it.size }
+            SortMode.DATE -> if (ascending) list.sortedBy { it.lastModified }
+                else list.sortedByDescending { it.lastModified }
+            SortMode.TYPE -> if (ascending) list.sortedBy { it.extension }
+                else list.sortedByDescending { it.extension }
         }
-        val regularFiles = files.filter { !it.isDirectory }.let { files ->
-            when (mode) {
-                SortMode.NAME -> if (ascending) files.sortedWith(compareBy(NaturalOrderComparator) { it.name })
-                    else files.sortedWith(compareBy(NaturalOrderComparator.reversed()) { it.name })
-                SortMode.SIZE -> if (ascending) files.sortedBy { it.size }
-                    else files.sortedByDescending { it.size }
-                SortMode.DATE -> if (ascending) files.sortedBy { it.lastModified }
-                    else files.sortedByDescending { it.lastModified }
-                SortMode.TYPE -> if (ascending) files.sortedBy { it.extension }
-                    else files.sortedByDescending { it.extension }
-            }
+
+        return if (directoriesFirst) {
+            sortList(files.filter { it.isDirectory }) + sortList(files.filter { !it.isDirectory })
+        } else {
+            sortList(files)
         }
-        return directories + regularFiles
     }
 }

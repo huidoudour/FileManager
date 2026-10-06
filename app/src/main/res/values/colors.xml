@@ -7,4 +7,18 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- 文件类型图标色板 (参考 MaterialFiles 的彩色图标) -->
+    <color name="file_icon_light_blue">#4B86F0</color>
+    <color name="file_icon_blue">#4285F4</color>
+    <color name="file_icon_cyan">#24C1E0</color>
+    <color name="file_icon_light_green">#34A853</color>
+    <color name="file_icon_green">#22A667</color>
+    <color name="file_icon_deep_green">#0F9D58</color>
+    <color name="file_icon_grey">#5F6368</color>
+    <color name="file_icon_orange">#FD7541</color>
+    <color name="file_icon_purple">#A142F4</color>
+    <color name="file_icon_red">#EA4335</color>
+    <color name="file_icon_deep_red">#DB4437</color>
+    <color name="file_icon_yellow">#F4B400</color>
 </resources>

@@ -21,12 +21,37 @@
     <string name="create_file">新建文件</string>
     <string name="show_hidden_files">显示隐藏文件</string>
     <string name="hide_hidden_files">隐藏隐藏文件</string>
+    <string name="nav_up">上一级目录</string>
+    <string name="paste">粘贴</string>
 
     <!-- 排序 -->
     <string name="sort_name">名称</string>
     <string name="sort_size">大小</string>
     <string name="sort_date">日期</string>
     <string name="sort_type">类型</string>
+    <string name="sort_ascending">升序排列</string>
+    <string name="sort_ascending_desc">升序</string>
+    <string name="sort_descending_desc">降序</string>
+    <string name="sort_directories_first">文件夹在前</string>
+
+    <!-- 右上角更多菜单 (照搬 MaterialFiles) -->
+    <string name="navigate_to">跳转到路径</string>
+    <string name="navigate_to_path_hint">输入目录路径</string>
+    <string name="copy_path">复制路径</string>
+    <string name="path_copied">已复制路径</string>
+    <string name="bookmark_add">收藏当前目录</string>
+    <string name="bookmark_remove">取消收藏当前目录</string>
+    <string name="create_shortcut">创建快捷方式</string>
+    <string name="shortcut_created">快捷方式已创建</string>
+    <string name="exit_app">退出应用</string>
+
+    <!-- 顶栏副标题统计 -->
+    <string name="subtitle_folder_count">%1$d 个文件夹</string>
+    <string name="subtitle_file_count">%1$d 个文件</string>
+    <string name="subtitle_separator">, </string>
+    <string name="subtitle_empty">空</string>
+    <string name="subtitle_loading">加载中…</string>
+    <string name="subtitle_error">发生错误</string>
 
     <!-- 多选 -->
     <string name="selected_count">已选 %1$d 项</string>
@@ -57,7 +82,6 @@
     <string name="nav_forward">下一步</string>
     <string name="nav_home">主目录</string>
     <string name="nav_create">新建</string>
-    <string name="nav_up">上一级</string>
     <string name="press_back_again">再按一次返回退出应用</string>
 
     <!-- 剪贴板 / 粘贴 -->
@@ -165,8 +189,8 @@
     <string name="file_not_found">文件不存在</string>
     <string name="no_app_to_open">没有可打开此文件的应用</string>
     <string name="open_file_failed">打开文件失败: %1$s</string>
-    <string name="share_no_files">没有可分享的文件 (不支持分享文件夹)</string>
-    <string name="share_files_title">分享 %1$d 个文件</string>
+    <string name="share_no_files">没有可分享的内容</string>
+    <string name="share_files_title">分享 %1$d 项</string>
     <string name="share_failed">分享失败: %1$s</string>
     <string name="installer_required">请先安装 io.github.huidoudour.Installer 安装器</string>
     <string name="installer_unsupported">io.github.huidoudour.Installer 不支持安装此 APK</string>

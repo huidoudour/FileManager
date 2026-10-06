@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
@@ -110,6 +111,41 @@ fun CreateItemDialog(
                 enabled = name.trim().isNotEmpty()
             ) {
                 Text(stringResource(R.string.create))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
+}
+
+/** 跳转到路径对话框 (照搬 MaterialFiles 的 NavigateToPathDialogFragment) */
+@Composable
+fun NavigateToPathDialog(
+    currentPath: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var path by remember { mutableStateOf(currentPath) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null) },
+        title = { Text(stringResource(R.string.navigate_to)) },
+        text = {
+            OutlinedTextField(
+                value = path,
+                onValueChange = { path = it },
+                singleLine = true,
+                label = { Text(stringResource(R.string.navigate_to_path_hint)) },
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(path.trim()) },
+                enabled = path.trim().isNotEmpty() && path.trim() != currentPath
+            ) {
+                Text(stringResource(R.string.ok))
             }
         },
         dismissButton = {

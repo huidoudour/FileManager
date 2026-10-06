@@ -2,6 +2,8 @@ package me.huidoudour.file.manager.viewmodel
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
@@ -74,6 +76,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         private const val KEY_HIDDEN_QUICK_DIRS = "hidden_quick_dirs"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_SHOW_THUMBNAILS = "show_thumbnails"
+        private const val KEY_SORT_DIR_FIRST = "sort_directories_first"
         /** 搜索结果上限 */
         private const val MAX_SEARCH_RESULTS = 300
 
@@ -113,6 +116,11 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     private val _sortAscending = MutableStateFlow(true)
     val sortAscending: StateFlow<Boolean> = _sortAscending.asStateFlow()
+
+    /** 排序时文件夹是否排在最前 */
+    private val _sortDirectoriesFirst =
+        MutableStateFlow(prefs.getBoolean(KEY_SORT_DIR_FIRST, true))
+    val sortDirectoriesFirst: StateFlow<Boolean> = _sortDirectoriesFirst.asStateFlow()
 
     /** 多选: 已选中的文件路径集合 */
     private val _selectedPaths = MutableStateFlow<Set<String>>(emptySet())
@@ -349,7 +357,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                     updateNavState()
                 }
                 _currentPath.value = path
-                _files.value = FileSortUtil.sort(fileList, _sortMode.value, _sortAscending.value)
+                _files.value = FileSortUtil.sort(
+                    fileList, _sortMode.value, _sortAscending.value, _sortDirectoriesFirst.value
+                )
                 saveCurrentPath()
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: str(R.string.unknown_error)
@@ -438,9 +448,36 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             _sortMode.value = mode
             _sortAscending.value = true
         }
-        _files.value = FileSortUtil.sort(_files.value, _sortMode.value, _sortAscending.value)
-        _searchResults.value =
-            FileSortUtil.sort(_searchResults.value, _sortMode.value, _sortAscending.value)
+        resortAll()
+    }
+
+    /**
+     * 切换"文件夹在前"排序 (照搬 MaterialFiles 的 sortDirectoriesFirst)
+     */
+    fun toggleSortDirectoriesFirst() {
+        _sortDirectoriesFirst.value = !_sortDirectoriesFirst.value
+        prefs.edit { putBoolean(KEY_SORT_DIR_FIRST, _sortDirectoriesFirst.value) }
+        resortAll()
+    }
+
+    /** 按当前排序设置重新排序文件列表与搜索结果 */
+    private fun resortAll() {
+        _files.value = FileSortUtil.sort(
+            _files.value, _sortMode.value, _sortAscending.value, _sortDirectoriesFirst.value
+        )
+        _searchResults.value = FileSortUtil.sort(
+            _searchResults.value, _sortMode.value, _sortAscending.value, _sortDirectoriesFirst.value
+        )
+    }
+
+    /**
+     * 复制路径文本到系统剪贴板
+     */
+    fun copyPathToClipboard(path: String) {
+        val clipboard = getApplication<Application>()
+            .getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        clipboard.setPrimaryClip(ClipData.newPlainText("path", path))
+        _toastMessage.value = str(R.string.path_copied)
     }
 
     /**
@@ -772,8 +809,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 // 增量刷新结果
                 _searchResults.value = results.toList()
             }
-            _searchResults.value =
-                FileSortUtil.sort(results, _sortMode.value, _sortAscending.value)
+            _searchResults.value = FileSortUtil.sort(
+                results, _sortMode.value, _sortAscending.value, _sortDirectoriesFirst.value
+            )
             if (isActive) _isSearchLoading.value = false
         }
     }
