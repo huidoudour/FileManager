@@ -38,6 +38,7 @@ dependencies {
     implementation(libs.androidx.uiautomator)
 }
 
+@Suppress("UnstableApiUsage")
 androidComponents {
     onVariants { v ->
         val artifactsLoader = v.artifacts.getBuiltArtifactsLoader()
