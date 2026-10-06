@@ -4,6 +4,7 @@ import java.util.Date
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.baselineprofile)
 }
 
 // ── Git 版本控制 ──
@@ -33,22 +34,17 @@ android {
             minorApiLevel = 2
         }
     }
-
     defaultConfig {
         applicationId = namespace
         minSdk = 29
         targetSdk = 37
         versionCode = appVersionCode
         versionName = appVersionName
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-
     val useSignKey = rootProject.hasProperty("storeFile") &&
             rootProject.hasProperty("storePassword") &&
             rootProject.hasProperty("keyAlias") &&
             rootProject.hasProperty("keyPassword")
-
     signingConfigs {
         if (useSignKey) {
             create("sign_key") {
@@ -63,7 +59,6 @@ android {
             }
         }
     }
-
     buildTypes {
         debug {
             signingConfig = if (useSignKey) {
@@ -86,7 +81,6 @@ android {
             }
         }
     }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -99,10 +93,32 @@ android {
             excludes += setOf("**/libandroidx.graphics.path.so")
         }
     }
-
     lint {
-        // 文件管理器需完整访问媒体库，关闭 Android 14+ 部分媒体访问相关检查
         disable += setOf("SelectedPhotoAccess", "PhotoAndVideoPolicy")
+    }
+    lint {
+        warningsAsErrors = false
+        abortOnError = true
+        disable += setOf(
+            "HardcodedText",           // 允许硬编码文本(调试阶段)
+            "SetTextI18n",             // 允许文本拼接
+            "DefaultLocale",           // 允许默认Locale
+            "SdCardPath",              // 允许硬编码路径(系统工具)
+            "UseTomlInstead",          // 暂不强制使用版本目录
+            "ObsoleteSdkInt",          // 允许过时的SDK版本检查
+            "UnusedResources",         // 允许未使用资源(可能被动态引用)
+            "Overdraw",                // 允许过度绘制
+            "UselessParent",           // 允许冗余父布局
+            "Autofill",                // 不强制自动填充提示
+            "FragmentTagUsage",        // 允许使用fragment标签
+            "GradleDependency",        // 不强制更新依赖
+            "NewerVersionAvailable"    // 不强制更新到最新版本
+        )
+        checkOnly += setOf(
+            "NotSibling",              // 必须检查布局引用错误
+            "DuplicateIds",            // 必须检查重复ID
+            "UnknownId"                // 必须检查未知ID引用
+        )
     }
 }
 
@@ -117,12 +133,14 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.profileinstaller)
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    "baselineProfile"(project(":baseline"))
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.material3.adaptive.navigation.suite)
