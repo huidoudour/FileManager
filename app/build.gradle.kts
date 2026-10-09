@@ -10,7 +10,7 @@ plugins {
 // ── Git 版本控制 ──
 val backVersionCode = 20
 val baseVersionCode = 10
-val baseVersionName = "26.10"
+val baseVersionName = "26.10.08"
 
 fun Project.gitCommitCount(): Int = try {
     providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
@@ -42,7 +42,9 @@ android {
         versionName = appVersionName
 
         ndk {
-            abiFilters += setOf( "arm64-v8a" , "x86_64" )
+            // 覆盖全部主流 ABI (含 32 位设备)
+            // 注: ffmpeg-kit 仅提供 arm64-v8a / x86_64 原生库, 32 位机型上音视频预览自动回退系统打开
+            abiFilters += setOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
         }
     }
     val useSignKey = rootProject.hasProperty("storeFile") &&
@@ -92,11 +94,8 @@ android {
     buildFeatures {
         compose = true
     }
-    packaging {
-        jniLibs {
-            excludes += setOf("**/libandroidx.graphics.path.so")
-        }
-    }
+    // 注: 不排除 libandroidx.graphics.path.so (含 4 ABI) — 作为 32 位设备
+    // (armeabi-v7a / x86) 的 ABI 兼容锚点使 APK 可安装; minSdk 29+ 运行时不加载该库
     lint {
         warningsAsErrors = false
         abortOnError = true

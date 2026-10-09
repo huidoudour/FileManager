@@ -239,4 +239,6 @@
     <string name="audio_mode_repeat_all">列表循环</string>
     <string name="audio_mode_repeat_one">单曲循环</string>
     <string name="audio_mode_shuffle">随机播放</string>
+    <string name="audio_details">详细信息</string>
+    <string name="audio_details_collapse">收起详情</string>
 </resources>

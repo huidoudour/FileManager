@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -235,6 +236,9 @@ internal fun AudioPreviewDialog(
     var mediaInfo by remember { mutableStateOf<MediaProbe.MediaInfo?>(null) }
     var artworkFile by remember { mutableStateOf<File?>(null) }
 
+    // 解析信息区显隐 (由"详细信息"按钮控制)
+    var showDetails by remember { mutableStateOf(false) }
+
     LaunchedEffect(currentItem.path) {
         parsing = true
         parseFailed = false
@@ -315,7 +319,7 @@ internal fun AudioPreviewDialog(
                     .padding(20.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                // ---- 顶栏: 文件名 + 后台播放开关 ----
+                // ---- 顶栏: 文件名 + 后台播放开关 (文本在开关左侧) ----
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = currentItem.name,
@@ -326,29 +330,27 @@ internal fun AudioPreviewDialog(
                         modifier = Modifier.weight(1f)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = stringResource(R.string.audio_background_play),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Switch(
-                            checked = backgroundPlay,
-                            onCheckedChange = { checked ->
-                                backgroundPlay = checked
-                                prefs.edit { putBoolean(KEY_BACKGROUND_PLAY, checked) }
-                                if (checked &&
-                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                                    ContextCompat.checkSelfPermission(
-                                        context, Manifest.permission.POST_NOTIFICATIONS
-                                    ) != PackageManager.PERMISSION_GRANTED
-                                ) {
-                                    notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                }
-                            },
-                            modifier = Modifier.scale(0.8f)
-                        )
-                    }
+                    Text(
+                        text = stringResource(R.string.audio_background_play),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Switch(
+                        checked = backgroundPlay,
+                        onCheckedChange = { checked ->
+                            backgroundPlay = checked
+                            prefs.edit { putBoolean(KEY_BACKGROUND_PLAY, checked) }
+                            if (checked &&
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                ContextCompat.checkSelfPermission(
+                                    context, Manifest.permission.POST_NOTIFICATIONS
+                                ) != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        },
+                        modifier = Modifier.scale(0.8f)
+                    )
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -469,45 +471,48 @@ internal fun AudioPreviewDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                // ---- 媒体信息区 (ffprobe 解析结果, 由"详细信息"按钮控制显隐) ----
+                AnimatedVisibility(visible = showDetails) {
+                    Column {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        when {
+                            parsing -> Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = stringResource(R.string.media_preview_parsing),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            }
 
-                // ---- 媒体信息区 (ffprobe 解析结果) ----
-                when {
-                    parsing -> Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = stringResource(R.string.media_preview_parsing),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            strokeWidth = 2.dp
-                        )
-                    }
+                            parseFailed -> Text(
+                                text = stringResource(R.string.media_preview_parse_failed),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
 
-                    parseFailed -> Text(
-                        text = stringResource(R.string.media_preview_parse_failed),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    else -> mediaInfo?.let { info ->
-                        Column {
-                            info.formatLong?.let {
-                                InfoRow(stringResource(R.string.media_info_format), it)
-                            }
-                            info.durationMs?.let {
-                                if (it > 0) InfoRow(stringResource(R.string.media_info_duration), formatTime(it))
-                            }
-                            info.bitrate?.let {
-                                if (it > 0) InfoRow(stringResource(R.string.media_info_total_bitrate), formatBitrate(it))
-                            }
-                            info.video?.let {
-                                InfoRow(stringResource(R.string.media_info_video), buildStreamSummary(it, video = true))
-                            }
-                            info.audio?.let {
-                                InfoRow(stringResource(R.string.media_info_audio), buildStreamSummary(it, video = false))
+                            else -> mediaInfo?.let { info ->
+                                Column {
+                                    info.formatLong?.let {
+                                        InfoRow(stringResource(R.string.media_info_format), it)
+                                    }
+                                    info.durationMs?.let {
+                                        if (it > 0) InfoRow(stringResource(R.string.media_info_duration), formatTime(it))
+                                    }
+                                    info.bitrate?.let {
+                                        if (it > 0) InfoRow(stringResource(R.string.media_info_total_bitrate), formatBitrate(it))
+                                    }
+                                    info.video?.let {
+                                        InfoRow(stringResource(R.string.media_info_video), buildStreamSummary(it, video = true))
+                                    }
+                                    info.audio?.let {
+                                        InfoRow(stringResource(R.string.media_info_audio), buildStreamSummary(it, video = false))
+                                    }
+                                }
                             }
                         }
                     }
@@ -515,17 +520,28 @@ internal fun AudioPreviewDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // ---- 底部按钮 ----
+                // ---- 底部按钮: 详细信息 (左) | 用其他应用打开 / 关闭 (右) ----
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = { onOpenWith(currentItem) }) {
-                        Text(stringResource(R.string.media_preview_open_with))
+                    TextButton(onClick = { showDetails = !showDetails }) {
+                        Text(
+                            text = stringResource(
+                                if (showDetails) R.string.audio_details_collapse
+                                else R.string.audio_details
+                            )
+                        )
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.close))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { onOpenWith(currentItem) }) {
+                            Text(stringResource(R.string.media_preview_open_with))
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        TextButton(onClick = onDismiss) {
+                            Text(stringResource(R.string.close))
+                        }
                     }
                 }
             }
