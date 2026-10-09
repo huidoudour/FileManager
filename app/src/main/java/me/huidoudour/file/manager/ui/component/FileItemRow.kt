@@ -1,7 +1,7 @@
 package me.huidoudour.file.manager.ui.component
 
 import android.content.Context
-import androidx.annotation.DrawableRes
+import android.util.LruCache
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -19,8 +19,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -29,32 +39,55 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toBitmap
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
+import me.huidoudour.file.manager.ui.theme.FileTintApk
+import me.huidoudour.file.manager.ui.theme.FileTintArchive
+import me.huidoudour.file.manager.ui.theme.FileTintAudio
+import me.huidoudour.file.manager.ui.theme.FileTintCode
+import me.huidoudour.file.manager.ui.theme.FileTintDocument
 import me.huidoudour.file.manager.ui.theme.FileTintFolder
+import me.huidoudour.file.manager.ui.theme.FileTintImage
+import me.huidoudour.file.manager.ui.theme.FileTintOther
+import me.huidoudour.file.manager.ui.theme.FileTintPdf
+import me.huidoudour.file.manager.ui.theme.FileTintVideo
 import me.huidoudour.file.manager.util.FileCategory
 import me.huidoudour.file.manager.util.FileTypeUtil
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
 
 // =============================================================================
-//  MaterialFiles 风格列表项
-//  - 行高 72dp, 左侧 48dp 图标触摸区 (40dp 彩色图标), 右侧 48dp 三点菜单按钮
-//  - 选中时图标右下角显示圆形对勾徽章, 行本身无背景色变化
+//  文件列表项
+//  - 行高 72dp, 左侧 48dp 图标触摸区, 右侧 48dp 三点菜单按钮
+//  - 图标: 彩色矢量图标 + 圆形淡色底 (按文件类型显示对应图标)
+//  - 图片/视频显示圆角缩略图; 单 APK 识别成功后显示其应用图标
+//  - 选中时图标右下角显示圆形对勾徽章
 // =============================================================================
 
 /** 单条文件的长按/菜单操作 */
@@ -86,19 +119,70 @@ private object ThumbnailLoader {
         }
 }
 
-/** 文件类型彩色图标 (照搬 MaterialFiles 的 file_*_icon 系列) */
-@DrawableRes
-private fun fileIconRes(category: FileCategory): Int = when (category) {
-    FileCategory.FOLDER -> R.drawable.file_directory_icon
-    FileCategory.IMAGE -> R.drawable.file_image_icon
-    FileCategory.VIDEO -> R.drawable.file_video_icon
-    FileCategory.AUDIO -> R.drawable.file_audio_icon
-    FileCategory.DOCUMENT -> R.drawable.file_document_icon
-    FileCategory.PDF -> R.drawable.file_pdf_icon
-    FileCategory.ARCHIVE -> R.drawable.file_archive_icon
-    FileCategory.CODE -> R.drawable.file_code_icon
-    FileCategory.APK -> R.drawable.file_apk_icon
-    FileCategory.OTHER -> R.drawable.file_generic_icon
+/** 文件类型对应的彩色矢量图标 (按类别显示对应图标) */
+private fun fileIcon(category: FileCategory): ImageVector = when (category) {
+    FileCategory.FOLDER -> Icons.Filled.Folder
+    FileCategory.IMAGE -> Icons.Filled.Image
+    FileCategory.VIDEO -> Icons.Filled.Movie
+    FileCategory.AUDIO -> Icons.Filled.MusicNote
+    FileCategory.DOCUMENT -> Icons.Filled.Description
+    FileCategory.PDF -> Icons.Filled.PictureAsPdf
+    FileCategory.ARCHIVE -> Icons.Filled.Archive
+    FileCategory.CODE -> Icons.Filled.Code
+    FileCategory.APK -> Icons.Filled.Android
+    FileCategory.OTHER -> Icons.AutoMirrored.Filled.InsertDriveFile
+}
+
+/** 图标 / 圆形淡色底对应的类别颜色 */
+private fun iconTint(category: FileCategory): Color = when (category) {
+    FileCategory.FOLDER -> FileTintFolder
+    FileCategory.IMAGE -> FileTintImage
+    FileCategory.VIDEO -> FileTintVideo
+    FileCategory.AUDIO -> FileTintAudio
+    FileCategory.DOCUMENT -> FileTintDocument
+    FileCategory.PDF -> FileTintPdf
+    FileCategory.ARCHIVE -> FileTintArchive
+    FileCategory.CODE -> FileTintCode
+    FileCategory.APK -> FileTintApk
+    FileCategory.OTHER -> FileTintOther
+}
+
+/**
+ * 单 APK 应用图标加载器。
+ *
+ * 通过 PackageManager 解析 APK 包信息并提取应用图标;
+ * 分包 / 损坏 / 非标准 APK 识别失败时返回 null, 由调用方回落为类型图标。
+ */
+private object ApkIconLoader {
+    /** 解析失败的结果用哨兵占位, 避免对同一个 APK 反复重试 */
+    private val none = Any()
+    private val cache = LruCache<String, Any>(64)
+
+    suspend fun load(context: Context, path: String): ImageBitmap? {
+        cache.get(path)?.let { return it as? ImageBitmap }
+        return withContext(Dispatchers.IO) {
+            val icon = extract(context, path)
+            cache.put(path, icon ?: none)
+            icon
+        }
+    }
+
+    private fun extract(context: Context, path: String): ImageBitmap? = try {
+        val pm = context.packageManager
+        val appInfo = pm.getPackageArchiveInfo(path, 0)?.applicationInfo
+        if (appInfo == null) {
+            null
+        } else {
+            // 必须设置 sourceDir, 否则 loadIcon 无法定位 APK 内的图标资源
+            appInfo.sourceDir = path
+            appInfo.publicSourceDir = path
+            // 显式给尺寸: AdaptiveIconDrawable 的 intrinsic 尺寸为 -1, 直接 toBitmap 会失败
+            val size = with(context.resources.displayMetrics) { (48 * density).toInt() }
+            appInfo.loadIcon(pm)?.toBitmap(size, size)?.asImageBitmap()
+        }
+    } catch (_: Exception) {
+        null
+    }
 }
 
 @Composable
@@ -117,8 +201,19 @@ fun FileItemRow(
     onAction: (FileAction) -> Unit = {}
 ) {
     val category = FileTypeUtil.getCategory(fileItem)
-    val iconRes = fileIconRes(category)
+    val icon = fileIcon(category)
+    val tint = iconTint(category)
     val interactionSource = remember { MutableInteractionSource() }
+
+    // APK 应用图标: 单 APK 识别成功后显示 (跟随缩略图开关)
+    val isApk = category == FileCategory.APK
+    val context = LocalContext.current
+    var apkIcon by remember(fileItem.path) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(fileItem.path) {
+        if (isApk) {
+            apkIcon = ApkIconLoader.load(context, fileItem.path)
+        }
+    }
 
     Row(
         modifier = Modifier
@@ -145,27 +240,53 @@ fun FileItemRow(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            if (showThumbnails &&
-                (category == FileCategory.IMAGE || category == FileCategory.VIDEO)
-            ) {
-                val context = LocalContext.current
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(File(fileItem.path))
-                        .build(),
-                    imageLoader = ThumbnailLoader.get(context),
-                    contentDescription = stringResource(category.labelRes),
-                    modifier = Modifier.size(40.dp),
-                    contentScale = ContentScale.Crop,
-                    error = painterResource(iconRes),
-                    fallback = painterResource(iconRes)
-                )
-            } else {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = stringResource(category.labelRes),
-                    modifier = Modifier.size(40.dp)
-                )
+            val currentApkIcon = apkIcon
+            when {
+                // APK 应用图标 (单 APK 识别成功时, 替换为软件包的真实图标)
+                showThumbnails && currentApkIcon != null -> {
+                    Icon(
+                        painter = remember(currentApkIcon) { BitmapPainter(currentApkIcon) },
+                        contentDescription = stringResource(category.labelRes),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp)),
+                        tint = Color.Unspecified
+                    )
+                }
+                // 图片 / 视频缩略图 (圆角, 失败时回落为类型图标)
+                showThumbnails &&
+                    (category == FileCategory.IMAGE || category == FileCategory.VIDEO) -> {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(File(fileItem.path))
+                            .build(),
+                        imageLoader = ThumbnailLoader.get(context),
+                        contentDescription = stringResource(category.labelRes),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp)),
+                        contentScale = ContentScale.Crop,
+                        error = rememberVectorPainter(icon),
+                        fallback = rememberVectorPainter(icon)
+                    )
+                }
+                // 类型图标: 40dp 圆形淡色底 + 22dp 彩色矢量图标
+                else -> {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(tint.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = stringResource(category.labelRes),
+                            modifier = Modifier.size(22.dp),
+                            tint = tint
+                        )
+                    }
+                }
             }
 
             // 选中徽章: 右下角 18dp 圆形对勾 (primary 底 + onPrimary 勾)

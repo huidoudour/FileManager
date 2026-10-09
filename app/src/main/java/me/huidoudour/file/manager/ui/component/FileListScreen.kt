@@ -1,13 +1,23 @@
 package me.huidoudour.file.manager.ui.component
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -92,7 +102,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
-import me.huidoudour.file.manager.ui.anim.PredictiveBackScreen
 import me.huidoudour.file.manager.util.SortMode
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
@@ -295,308 +304,380 @@ fun FileListScreen(
         )
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = !pickerMode && !saveMode && (drawerState.isOpen || (!selectionMode && !isSearchActive)),
-        drawerContent = {
-            DrawerContent(
-                currentPath = currentPath,
-                favorites = favorites,
-                showHidden = showHidden,
-                hiddenQuickDirs = hiddenQuickDirs,
-                onNavigate = { path ->
-                    scope.launch { drawerState.close() }
-                    viewModel.closeSearch()
-                    viewModel.clearSelection()
-                    viewModel.loadDirectory(path)
-                },
-                onRemoveFavorite = { viewModel.toggleFavorite(it) },
-                onToggleShowHidden = { viewModel.toggleShowHidden() },
-                onOpenSettings = {
-                    scope.launch { drawerState.close() }
-                    showSettings = true
-                }
-            )
-        }
+    // 页面切换（主界面 ↔ 设置页）：完全照搬 Dtool 的 AnimatedContent 联动过渡,
+    // 旧页退场与新页入场同时进行 (滑动 + 淡入淡出 + 轻微缩放)。
+    // 设置页打开时按返回键先关闭设置页 (Dtool 同款 BackHandler 处理)
+    BackHandler(enabled = showSettings) { showSettings = false }
+
+    // 防止深色模式下闪白的背景层 (照搬 Dtool)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        Scaffold(
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-            topBar = {
-                when {
-                    selectionMode -> SelectionTopBar(
-                        count = selectedPaths.size,
-                        singleSelection = selectedPaths.size == 1,
-                        isFavorite = singleSelected?.let { it.path in favorites } == true,
-                        isDirectory = singleSelected?.isDirectory == true,
-                        onClose = { viewModel.clearSelection() },
-                        onCut = { viewModel.cutToClipboard(viewModel.selectedItems()) },
-                        onCopy = { viewModel.copyToClipboard(viewModel.selectedItems()) },
-                        onDelete = { deleteTargets = viewModel.selectedItems() },
-                        onRename = { renameTarget = viewModel.selectedItems().firstOrNull() },
-                        onShare = {
-                            onShareFiles?.invoke(viewModel.selectedItems())
-                            viewModel.clearSelection()
-                        },
-                        onProperties = {
-                            viewModel.selectedItems().firstOrNull()?.let {
-                                viewModel.showProperties(it)
-                            }
-                        },
-                        onToggleFavorite = {
-                            viewModel.selectedItems().firstOrNull()?.let {
-                                viewModel.toggleFavorite(it.path)
-                            }
-                            viewModel.clearSelection()
-                        },
-                        onSelectAll = { viewModel.selectAll() }
+        AnimatedContent(
+            targetState = showSettings,
+            transitionSpec = {
+                if (targetState) {
+                    // 前进（打开设置）: 设置页从右滑入 + 淡入 + 轻微缩放, 主界面左移 1/3 + 淡出 + 轻微缩放
+                    (
+                        slideInHorizontally(
+                            animationSpec = tween(durationMillis = 350, easing = LinearOutSlowInEasing),
+                            initialOffsetX = { fullWidth -> fullWidth }
+                        ) +
+                        fadeIn(
+                            animationSpec = tween(durationMillis = 350, delayMillis = 50)
+                        ) +
+                        scaleIn(
+                            animationSpec = tween(durationMillis = 350, easing = FastOutLinearInEasing),
+                            initialScale = 0.95f
+                        )
+                    ) togetherWith (
+                        slideOutHorizontally(
+                            animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+                            targetOffsetX = { fullWidth -> -fullWidth / 3 }
+                        ) +
+                        fadeOut(
+                            animationSpec = tween(durationMillis = 250)
+                        ) +
+                        scaleOut(
+                            animationSpec = tween(durationMillis = 350),
+                            targetScale = 0.95f
+                        )
                     )
-                    isSearchActive -> SearchTopBar(
-                        query = searchQuery,
-                        isLoading = isSearchLoading,
-                        onQueryChange = { viewModel.setSearchQuery(it) },
-                        onClose = { viewModel.closeSearch() }
+                } else {
+                    // 后退（关闭设置）: 主界面从左滑入 + 淡入 + 轻微缩放, 设置页右移 1/3 + 淡出 + 轻微缩放
+                    (
+                        slideInHorizontally(
+                            animationSpec = tween(durationMillis = 350, easing = LinearOutSlowInEasing),
+                            initialOffsetX = { fullWidth -> -fullWidth }
+                        ) +
+                        fadeIn(
+                            animationSpec = tween(durationMillis = 350, delayMillis = 50)
+                        ) +
+                        scaleIn(
+                            animationSpec = tween(durationMillis = 350, easing = FastOutLinearInEasing),
+                            initialScale = 0.95f
+                        )
+                    ) togetherWith (
+                        slideOutHorizontally(
+                            animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+                            targetOffsetX = { fullWidth -> fullWidth / 3 }
+                        ) +
+                        fadeOut(
+                            animationSpec = tween(durationMillis = 250)
+                        ) +
+                        scaleOut(
+                            animationSpec = tween(durationMillis = 350),
+                            targetScale = 0.95f
+                        )
                     )
-                    saveMode -> SaveModeTopBar(
-                        currentDirName = if (currentPath == FileManagerViewModel.storageRoot) {
-                            internalStorageLabel
-                        } else {
-                            File(currentPath).name
-                        },
-                        onCancel = { onSaveCancelled?.invoke() }
-                    )
-                    else -> NormalTopBar(
-                        subtitle = subtitle,
-                        currentPath = currentPath,
-                        isPickerMode = pickerMode,
-                        canNavigateUp = canNavigateUp,
-                        sortMode = sortMode,
-                        sortAscending = sortAscending,
-                        sortDirectoriesFirst = sortDirectoriesFirst,
-                        showHidden = showHidden,
-                        isBookmarked = currentPath in favorites,
-                        onOpenDrawer = { scope.launch { drawerState.open() } },
-                        onNavigateBack = {
-                            if (!viewModel.navigateUp()) {
-                                onPickCancelled?.invoke()
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        ) { settingsOpen ->
+            if (settingsOpen) {
+                // 设置页
+                SettingsScreen(
+                    hiddenQuickDirs = hiddenQuickDirs,
+                    themeMode = themeMode,
+                    showThumbnails = showThumbnails,
+                    onToggleQuickDir = { id, hidden -> viewModel.setQuickDirHidden(id, hidden) },
+                    onThemeModeChange = { viewModel.setThemeMode(it) },
+                    onShowThumbnailsChange = { viewModel.setShowThumbnails(it) },
+                    onBack = { showSettings = false }
+                )
+            } else {
+                // 主界面
+                ModalNavigationDrawer(
+                    drawerState = drawerState,
+                    gesturesEnabled = !pickerMode && !saveMode && (drawerState.isOpen || (!selectionMode && !isSearchActive)),
+                    drawerContent = {
+                        DrawerContent(
+                            currentPath = currentPath,
+                            favorites = favorites,
+                            showHidden = showHidden,
+                            hiddenQuickDirs = hiddenQuickDirs,
+                            onNavigate = { path ->
+                                scope.launch { drawerState.close() }
+                                viewModel.closeSearch()
+                                viewModel.clearSelection()
+                                viewModel.loadDirectory(path)
+                            },
+                            onRemoveFavorite = { viewModel.toggleFavorite(it) },
+                            onToggleShowHidden = { viewModel.toggleShowHidden() },
+                            onOpenSettings = {
+                                scope.launch { drawerState.close() }
+                                showSettings = true
                             }
-                        },
-                        onNavigateUp = { viewModel.navigateUp() },
-                        onNavigateTo = { showNavigateToDialog = true },
-                        onPathClick = { path -> viewModel.loadDirectory(path) },
-                        onSearchClick = { viewModel.openSearch() },
-                        onSortModeSelected = { viewModel.setSortMode(it) },
-                        onToggleSortOrder = { viewModel.setSortMode(sortMode) },
-                        onToggleDirectoriesFirst = { viewModel.toggleSortDirectoriesFirst() },
-                        onSelectAll = { viewModel.selectAll() },
-                        onToggleShowHidden = { viewModel.toggleShowHidden() },
-                        onRefreshClick = { viewModel.refresh() },
-                        onToggleBookmark = { viewModel.toggleFavorite(currentPath) },
-                        onShareCurrentDir = {
-                            // 分享当前目录 (照搬 MaterialFiles 的 share())
-                            val dir = File(currentPath)
-                            onShareFiles?.invoke(
-                                listOf(
-                                    FileItem(
-                                        name = dir.name,
-                                        path = dir.absolutePath,
-                                        parentPath = dir.parent ?: "",
-                                        isDirectory = true,
-                                        size = 0L,
-                                        lastModified = dir.lastModified(),
-                                        extension = "",
-                                        canRead = dir.canRead(),
-                                        canWrite = dir.canWrite(),
-                                        isHidden = dir.isHidden
-                                    )
+                        )
+                    }
+                ) {
+                    Scaffold(
+                        snackbarHost = { SnackbarHost(snackbarHostState) },
+                        topBar = {
+                            when {
+                                selectionMode -> SelectionTopBar(
+                                    count = selectedPaths.size,
+                                    singleSelection = selectedPaths.size == 1,
+                                    isFavorite = singleSelected?.let { it.path in favorites } == true,
+                                    isDirectory = singleSelected?.isDirectory == true,
+                                    onClose = { viewModel.clearSelection() },
+                                    onCut = { viewModel.cutToClipboard(viewModel.selectedItems()) },
+                                    onCopy = { viewModel.copyToClipboard(viewModel.selectedItems()) },
+                                    onDelete = { deleteTargets = viewModel.selectedItems() },
+                                    onRename = { renameTarget = viewModel.selectedItems().firstOrNull() },
+                                    onShare = {
+                                        onShareFiles?.invoke(viewModel.selectedItems())
+                                        viewModel.clearSelection()
+                                    },
+                                    onProperties = {
+                                        viewModel.selectedItems().firstOrNull()?.let {
+                                            viewModel.showProperties(it)
+                                        }
+                                    },
+                                    onToggleFavorite = {
+                                        viewModel.selectedItems().firstOrNull()?.let {
+                                            viewModel.toggleFavorite(it.path)
+                                        }
+                                        viewModel.clearSelection()
+                                    },
+                                    onSelectAll = { viewModel.selectAll() }
                                 )
-                            )
-                        },
-                        onCopyPath = { viewModel.copyPathToClipboard(currentPath) },
-                        onCreateShortcut = { onCreateShortcut?.invoke(currentPath) },
-                        onExitApp = { onExitApp?.invoke() }
-                    )
-                }
-            },
-            bottomBar = {
-                Column {
-                    if (clipboard != null && !selectionMode && !pickerMode && !saveMode) {
-                        PasteBar(
-                            itemCount = clipboard!!.items.size,
-                            isCut = clipboard!!.isCut,
-                            onPaste = { viewModel.requestPaste() },
-                            onCancel = { viewModel.clearClipboard() }
-                        )
-                    }
-
-                    AnimatedVisibility(
-                        visible = saveMode && saveFileCount > 0,
-                        enter = fadeIn(),
-                        exit = fadeOut()
-                    ) {
-                        SaveModeBar(
-                            fileCount = saveFileCount,
-                            onSave = { onSaveConfirmed?.invoke() },
-                            onCancel = { onSaveCancelled?.invoke() }
-                        )
-                    }
-
-                    // 底部操控栏 (MT 风格): 与 FAB 并存的个性化组件
-                    if (fabVisible) {
-                        BottomNavBar(
-                            canBack = canGoBack,
-                            canForward = canGoForward,
-                            atRoot = !canNavigateUp,
-                            onBack = { viewModel.navigateBack() },
-                            onForward = { viewModel.navigateForward() },
-                            onHome = { viewModel.navigateHome() },
-                            onCreateFolder = { createDialogIsFolder = true },
-                            onNavigateUp = { viewModel.navigateUp() }
-                        )
-                    }
-                }
-            },
-            floatingActionButton = {
-                if (fabVisible) {
-                    FabSpeedDial(
-                        expanded = fabExpanded,
-                        onExpandedChange = { fabExpanded = it },
-                        onCreateFolder = {
-                            fabExpanded = false
-                            createDialogIsFolder = true
-                        },
-                        onCreateFile = {
-                            fabExpanded = false
-                            createDialogIsFolder = false
-                        }
-                    )
-                }
-            }
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                when {
-                    isLoading && !searching && displayedFiles.isEmpty() -> {
-                        CircularProgressIndicator(
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
-                    searching && displayedFiles.isEmpty() -> {
-                        if (isSearchLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.align(Alignment.Center)
-                            )
-                        } else {
-                            EmptyPlaceholder(
-                                text = stringResource(R.string.no_search_results),
-                                modifier = Modifier.align(Alignment.Center)
-                            )
-                        }
-                    }
-                    displayedFiles.isEmpty() && errorMessage == null -> {
-                        EmptyPlaceholder(
-                            text = stringResource(R.string.dir_empty),
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
-                    else -> {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(
-                                top = 4.dp,
-                                bottom = if (fabVisible) 88.dp else 8.dp
-                            )
-                        ) {
-                            items(
-                                items = displayedFiles,
-                                key = { it.path }
-                            ) { fileItem ->
-                                FileItemRow(
-                                    fileItem = fileItem,
-                                    viewModel = viewModel,
-                                    isChecked = fileItem.path in selectedPaths,
-                                    isFavorite = fileItem.path in favorites,
-                                    isMenuShown = actionTarget?.path == fileItem.path,
-                                    showThumbnails = showThumbnails,
-                                    onItemClick = {
-                                        when {
-                                            selectionMode ->
-                                                viewModel.toggleSelection(fileItem)
-                                            fileItem.isDirectory -> {
-                                                if (searching) viewModel.closeSearch()
-                                                viewModel.navigateToDirectory(fileItem)
-                                            }
-                                            else -> onFileSelected?.invoke(fileItem)
-                                        }
-                                    },
-                                    onIconClick = if (pickerMode || saveMode) {
-                                        {}
+                                isSearchActive -> SearchTopBar(
+                                    query = searchQuery,
+                                    isLoading = isSearchLoading,
+                                    onQueryChange = { viewModel.setSearchQuery(it) },
+                                    onClose = { viewModel.closeSearch() }
+                                )
+                                saveMode -> SaveModeTopBar(
+                                    currentDirName = if (currentPath == FileManagerViewModel.storageRoot) {
+                                        internalStorageLabel
                                     } else {
-                                        { viewModel.toggleSelection(fileItem) }
+                                        File(currentPath).name
                                     },
-                                    onItemLongClick = if (pickerMode || saveMode) null else ({
-                                        if (selectionMode) {
-                                            if (fileItem.isDirectory) {
-                                                if (searching) viewModel.closeSearch()
-                                                viewModel.navigateToDirectory(fileItem)
-                                            } else {
-                                                onFileSelected?.invoke(fileItem)
-                                            }
-                                        } else {
-                                            viewModel.toggleSelection(fileItem)
+                                    onCancel = { onSaveCancelled?.invoke() }
+                                )
+                                else -> NormalTopBar(
+                                    subtitle = subtitle,
+                                    currentPath = currentPath,
+                                    isPickerMode = pickerMode,
+                                    canNavigateUp = canNavigateUp,
+                                    sortMode = sortMode,
+                                    sortAscending = sortAscending,
+                                    sortDirectoriesFirst = sortDirectoriesFirst,
+                                    showHidden = showHidden,
+                                    isBookmarked = currentPath in favorites,
+                                    onOpenDrawer = { scope.launch { drawerState.open() } },
+                                    onNavigateBack = {
+                                        if (!viewModel.navigateUp()) {
+                                            onPickCancelled?.invoke()
                                         }
-                                    }),
-                                    onMenuClick = { actionTarget = fileItem },
-                                    onMenuDismiss = { actionTarget = null },
-                                    onAction = { action ->
-                                        when (action) {
-                                            FileAction.COPY ->
-                                                viewModel.copyToClipboard(listOf(fileItem))
-                                            FileAction.CUT ->
-                                                viewModel.cutToClipboard(listOf(fileItem))
-                                            FileAction.DELETE ->
-                                                deleteTargets = listOf(fileItem)
-                                            FileAction.RENAME ->
-                                                renameTarget = fileItem
-                                            FileAction.SHARE ->
-                                                onShareFiles?.invoke(listOf(fileItem))
-                                            FileAction.FAVORITE ->
-                                                viewModel.toggleFavorite(fileItem.path)
-                                            FileAction.PIN_SIZE ->
-                                                viewModel.togglePinFolder(fileItem.path)
-                                            FileAction.REFRESH_SIZE ->
-                                                viewModel.refreshFolderSize(fileItem.path)
-                                            FileAction.PROPERTIES ->
-                                                viewModel.showProperties(fileItem)
-                                            FileAction.MULTI_SELECT ->
-                                                viewModel.toggleSelection(fileItem)
-                                        }
-                                        actionTarget = null
+                                    },
+                                    onNavigateUp = { viewModel.navigateUp() },
+                                    onNavigateTo = { showNavigateToDialog = true },
+                                    onPathClick = { path -> viewModel.loadDirectory(path) },
+                                    onSearchClick = { viewModel.openSearch() },
+                                    onSortModeSelected = { viewModel.setSortMode(it) },
+                                    onToggleSortOrder = { viewModel.setSortMode(sortMode) },
+                                    onToggleDirectoriesFirst = { viewModel.toggleSortDirectoriesFirst() },
+                                    onSelectAll = { viewModel.selectAll() },
+                                    onToggleShowHidden = { viewModel.toggleShowHidden() },
+                                    onRefreshClick = { viewModel.refresh() },
+                                    onToggleBookmark = { viewModel.toggleFavorite(currentPath) },
+                                    onShareCurrentDir = {
+                                        // 分享当前目录 (照搬 MaterialFiles 的 share())
+                                        val dir = File(currentPath)
+                                        onShareFiles?.invoke(
+                                            listOf(
+                                                FileItem(
+                                                    name = dir.name,
+                                                    path = dir.absolutePath,
+                                                    parentPath = dir.parent ?: "",
+                                                    isDirectory = true,
+                                                    size = 0L,
+                                                    lastModified = dir.lastModified(),
+                                                    extension = "",
+                                                    canRead = dir.canRead(),
+                                                    canWrite = dir.canWrite(),
+                                                    isHidden = dir.isHidden
+                                                )
+                                            )
+                                        )
+                                    },
+                                    onCopyPath = { viewModel.copyPathToClipboard(currentPath) },
+                                    onCreateShortcut = { onCreateShortcut?.invoke(currentPath) },
+                                    onExitApp = { onExitApp?.invoke() }
+                                )
+                            }
+                        },
+                        bottomBar = {
+                            Column {
+                                if (clipboard != null && !selectionMode && !pickerMode && !saveMode) {
+                                    PasteBar(
+                                        itemCount = clipboard!!.items.size,
+                                        isCut = clipboard!!.isCut,
+                                        onPaste = { viewModel.requestPaste() },
+                                        onCancel = { viewModel.clearClipboard() }
+                                    )
+                                }
+
+                                AnimatedVisibility(
+                                    visible = saveMode && saveFileCount > 0,
+                                    enter = fadeIn(),
+                                    exit = fadeOut()
+                                ) {
+                                    SaveModeBar(
+                                        fileCount = saveFileCount,
+                                        onSave = { onSaveConfirmed?.invoke() },
+                                        onCancel = { onSaveCancelled?.invoke() }
+                                    )
+                                }
+
+                                // 底部操控栏 (MT 风格): 与 FAB 并存的个性化组件
+                                if (fabVisible) {
+                                    BottomNavBar(
+                                        canBack = canGoBack,
+                                        canForward = canGoForward,
+                                        atRoot = !canNavigateUp,
+                                        onBack = { viewModel.navigateBack() },
+                                        onForward = { viewModel.navigateForward() },
+                                        onHome = { viewModel.navigateHome() },
+                                        onCreateFolder = { createDialogIsFolder = true },
+                                        onNavigateUp = { viewModel.navigateUp() }
+                                    )
+                                }
+                            }
+                        },
+                        floatingActionButton = {
+                            if (fabVisible) {
+                                FabSpeedDial(
+                                    expanded = fabExpanded,
+                                    onExpandedChange = { fabExpanded = it },
+                                    onCreateFolder = {
+                                        fabExpanded = false
+                                        createDialogIsFolder = true
+                                    },
+                                    onCreateFile = {
+                                        fabExpanded = false
+                                        createDialogIsFolder = false
                                     }
                                 )
                             }
                         }
+                    ) { innerPadding ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding)
+                        ) {
+                            when {
+                                isLoading && !searching && displayedFiles.isEmpty() -> {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.align(Alignment.Center)
+                                    )
+                                }
+                                searching && displayedFiles.isEmpty() -> {
+                                    if (isSearchLoading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.align(Alignment.Center)
+                                        )
+                                    } else {
+                                        EmptyPlaceholder(
+                                            text = stringResource(R.string.no_search_results),
+                                            modifier = Modifier.align(Alignment.Center)
+                                        )
+                                    }
+                                }
+                                displayedFiles.isEmpty() && errorMessage == null -> {
+                                    EmptyPlaceholder(
+                                        text = stringResource(R.string.dir_empty),
+                                        modifier = Modifier.align(Alignment.Center)
+                                    )
+                                }
+                                else -> {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(
+                                            top = 4.dp,
+                                            bottom = if (fabVisible) 88.dp else 8.dp
+                                        )
+                                    ) {
+                                        items(
+                                            items = displayedFiles,
+                                            key = { it.path }
+                                        ) { fileItem ->
+                                            FileItemRow(
+                                                fileItem = fileItem,
+                                                viewModel = viewModel,
+                                                isChecked = fileItem.path in selectedPaths,
+                                                isFavorite = fileItem.path in favorites,
+                                                isMenuShown = actionTarget?.path == fileItem.path,
+                                                showThumbnails = showThumbnails,
+                                                onItemClick = {
+                                                    when {
+                                                        selectionMode ->
+                                                            viewModel.toggleSelection(fileItem)
+                                                        fileItem.isDirectory -> {
+                                                            if (searching) viewModel.closeSearch()
+                                                            viewModel.navigateToDirectory(fileItem)
+                                                        }
+                                                        else -> onFileSelected?.invoke(fileItem)
+                                                    }
+                                                },
+                                                onIconClick = if (pickerMode || saveMode) {
+                                                    {}
+                                                } else {
+                                                    { viewModel.toggleSelection(fileItem) }
+                                                },
+                                                onItemLongClick = if (pickerMode || saveMode) null else ({
+                                                    if (selectionMode) {
+                                                        if (fileItem.isDirectory) {
+                                                            if (searching) viewModel.closeSearch()
+                                                            viewModel.navigateToDirectory(fileItem)
+                                                        } else {
+                                                            onFileSelected?.invoke(fileItem)
+                                                        }
+                                                    } else {
+                                                        viewModel.toggleSelection(fileItem)
+                                                    }
+                                                }),
+                                                onMenuClick = { actionTarget = fileItem },
+                                                onMenuDismiss = { actionTarget = null },
+                                                onAction = { action ->
+                                                    when (action) {
+                                                        FileAction.COPY ->
+                                                            viewModel.copyToClipboard(listOf(fileItem))
+                                                        FileAction.CUT ->
+                                                            viewModel.cutToClipboard(listOf(fileItem))
+                                                        FileAction.DELETE ->
+                                                            deleteTargets = listOf(fileItem)
+                                                        FileAction.RENAME ->
+                                                            renameTarget = fileItem
+                                                        FileAction.SHARE ->
+                                                            onShareFiles?.invoke(listOf(fileItem))
+                                                        FileAction.FAVORITE ->
+                                                            viewModel.toggleFavorite(fileItem.path)
+                                                        FileAction.PIN_SIZE ->
+                                                            viewModel.togglePinFolder(fileItem.path)
+                                                        FileAction.REFRESH_SIZE ->
+                                                            viewModel.refreshFolderSize(fileItem.path)
+                                                        FileAction.PROPERTIES ->
+                                                            viewModel.showProperties(fileItem)
+                                                        FileAction.MULTI_SELECT ->
+                                                            viewModel.toggleSelection(fileItem)
+                                                    }
+                                                    actionTarget = null
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
-        }
-    }
-
-    // 设置页：叠在主界面上层（而不是替换主界面），
-    // 这样返回手势滑出时露出的是真实的主界面，能看到"揭开"的效果。
-    if (showSettings) {
-        PredictiveBackScreen(onBack = { showSettings = false }) { requestBack ->
-            SettingsScreen(
-                hiddenQuickDirs = hiddenQuickDirs,
-                themeMode = themeMode,
-                showThumbnails = showThumbnails,
-                onToggleQuickDir = { id, hidden -> viewModel.setQuickDirHidden(id, hidden) },
-                onThemeModeChange = { viewModel.setThemeMode(it) },
-                onShowThumbnailsChange = { viewModel.setShowThumbnails(it) },
-                onBack = requestBack
-            )
         }
     }
 }
