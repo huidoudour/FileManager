@@ -29,10 +29,8 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -91,11 +89,9 @@ fun buildAllQuickDirs(): List<QuickDir> {
 fun DrawerContent(
     currentPath: String,
     favorites: List<String>,
-    showHidden: Boolean,
     hiddenQuickDirs: Set<String>,
     onNavigate: (String) -> Unit,
     onRemoveFavorite: (String) -> Unit,
-    onToggleShowHidden: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val allQuickDirs = remember { buildAllQuickDirs() }
@@ -213,16 +209,8 @@ fun DrawerContent(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // ---- 显示 (显示隐藏文件 / 设置) ----
+                // ---- 显示 (设置) ----
                 DrawerSectionLabel(R.string.section_display)
-                DrawerItem(
-                    icon = if (showHidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                    title = stringResource(
-                        if (showHidden) R.string.hide_hidden_files
-                        else R.string.show_hidden_files
-                    ),
-                    onClick = onToggleShowHidden
-                )
                 DrawerItem(
                     icon = Icons.Filled.Settings,
                     title = stringResource(R.string.settings),

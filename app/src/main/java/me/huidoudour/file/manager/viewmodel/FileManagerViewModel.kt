@@ -726,10 +726,10 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     //  隐藏文件
     // =========================================================================
 
-    fun toggleShowHidden() {
-        val newValue = !_showHidden.value
-        _showHidden.value = newValue
-        prefs.edit { putBoolean(KEY_SHOW_HIDDEN, newValue) }
+    fun setShowHidden(value: Boolean) {
+        if (_showHidden.value == value) return
+        _showHidden.value = value
+        prefs.edit { putBoolean(KEY_SHOW_HIDDEN, value) }
         refresh()
     }
 

@@ -382,9 +382,11 @@ fun FileListScreen(
                     hiddenQuickDirs = hiddenQuickDirs,
                     themeMode = themeMode,
                     showThumbnails = showThumbnails,
+                    showHidden = showHidden,
                     onToggleQuickDir = { id, hidden -> viewModel.setQuickDirHidden(id, hidden) },
                     onThemeModeChange = { viewModel.setThemeMode(it) },
                     onShowThumbnailsChange = { viewModel.setShowThumbnails(it) },
+                    onShowHiddenChange = { viewModel.setShowHidden(it) },
                     onBack = { showSettings = false }
                 )
             } else {
@@ -396,7 +398,6 @@ fun FileListScreen(
                         DrawerContent(
                             currentPath = currentPath,
                             favorites = favorites,
-                            showHidden = showHidden,
                             hiddenQuickDirs = hiddenQuickDirs,
                             onNavigate = { path ->
                                 scope.launch { drawerState.close() }
@@ -405,7 +406,6 @@ fun FileListScreen(
                                 viewModel.loadDirectory(path)
                             },
                             onRemoveFavorite = { viewModel.toggleFavorite(it) },
-                            onToggleShowHidden = { viewModel.toggleShowHidden() },
                             onOpenSettings = {
                                 scope.launch { drawerState.close() }
                                 showSettings = true
@@ -466,7 +466,6 @@ fun FileListScreen(
                                     sortMode = sortMode,
                                     sortAscending = sortAscending,
                                     sortDirectoriesFirst = sortDirectoriesFirst,
-                                    showHidden = showHidden,
                                     isBookmarked = currentPath in favorites,
                                     onOpenDrawer = { scope.launch { drawerState.open() } },
                                     onNavigateBack = {
@@ -482,7 +481,6 @@ fun FileListScreen(
                                     onToggleSortOrder = { viewModel.setSortMode(sortMode) },
                                     onToggleDirectoriesFirst = { viewModel.toggleSortDirectoriesFirst() },
                                     onSelectAll = { viewModel.selectAll() },
-                                    onToggleShowHidden = { viewModel.toggleShowHidden() },
                                     onRefreshClick = { viewModel.refresh() },
                                     onToggleBookmark = { viewModel.toggleFavorite(currentPath) },
                                     onShareCurrentDir = {
@@ -694,7 +692,6 @@ private fun NormalTopBar(
     sortMode: SortMode,
     sortAscending: Boolean,
     sortDirectoriesFirst: Boolean,
-    showHidden: Boolean,
     isBookmarked: Boolean,
     onOpenDrawer: () -> Unit,
     onNavigateBack: () -> Unit,
@@ -706,7 +703,6 @@ private fun NormalTopBar(
     onToggleSortOrder: () -> Unit,
     onToggleDirectoriesFirst: () -> Unit,
     onSelectAll: () -> Unit,
-    onToggleShowHidden: () -> Unit,
     onRefreshClick: () -> Unit,
     onToggleBookmark: () -> Unit,
     onShareCurrentDir: () -> Unit,
@@ -861,28 +857,6 @@ private fun NormalTopBar(
                             text = { Text(stringResource(R.string.select_all)) },
                             onClick = {
                                 onSelectAll()
-                                showMoreMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    stringResource(
-                                        if (showHidden) R.string.hide_hidden_files
-                                        else R.string.show_hidden_files
-                                    )
-                                )
-                            },
-                            trailingIcon = {
-                                if (showHidden) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Check,
-                                        contentDescription = null
-                                    )
-                                }
-                            },
-                            onClick = {
-                                onToggleShowHidden()
                                 showMoreMenu = false
                             }
                         )

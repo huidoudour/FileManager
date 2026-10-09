@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -14,9 +15,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ViewSidebar
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -44,14 +47,16 @@ import me.huidoudour.file.manager.viewmodel.ThemeMode
 import java.io.File
 
 /**
- * 设置页 — 侧栏快捷目录显示 + 外观(主题 / 缩略图)
+ * 设置页 — 侧栏快捷目录(子菜单对话框) + 外观(主题 / 缩略图 / 隐藏文件)
  *
  * @param hiddenQuickDirs 当前被隐藏的快捷目录 id 集合
  * @param themeMode 当前主题模式 (跟随系统 / 浅色 / 深色)
  * @param showThumbnails 是否加载图片/视频缩略图
+ * @param showHidden 是否显示隐藏文件
  * @param onToggleQuickDir 切换某个快捷目录的显示/隐藏 (id, 是否隐藏)
  * @param onThemeModeChange 切换主题模式
  * @param onShowThumbnailsChange 切换缩略图加载
+ * @param onShowHiddenChange 切换隐藏文件显示
  * @param onBack 返回主界面
  */
 @Composable
@@ -59,13 +64,16 @@ fun SettingsScreen(
     hiddenQuickDirs: Set<String>,
     themeMode: ThemeMode,
     showThumbnails: Boolean,
+    showHidden: Boolean,
     onToggleQuickDir: (String, Boolean) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     onShowThumbnailsChange: (Boolean) -> Unit,
+    onShowHiddenChange: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     val quickDirs = remember { buildAllQuickDirs() }
     var showThemeDialog by remember { mutableStateOf(false) }
+    var showSidebarDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -98,64 +106,43 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             SectionHeader(R.string.sidebar_special_folders)
-            Text(
-                text = stringResource(R.string.settings_change_tip),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-            )
-            quickDirs.forEach { dir ->
-                val exists = remember(dir.path) { File(dir.path).exists() }
-                val hidden = dir.id in hiddenQuickDirs
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = exists) {
-                            onToggleQuickDir(dir.id, !hidden)
-                        }
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = dir.icon,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(24.dp)
+            // 侧栏快捷目录管理入口 (点击打开子菜单对话框)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showSidebarDialog = true }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ViewSidebar,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.sidebar_special_folders),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(dir.labelRes),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = stringResource(R.string.show_in_sidebar),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (exists)
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            else
-                                MaterialTheme.colorScheme.error
-                        )
-                        if (!exists) {
-                            Text(
-                                text = stringResource(R.string.not_available),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                    Switch(
-                        checked = !hidden,
-                        onCheckedChange = { checked -> onToggleQuickDir(dir.id, !checked) },
-                        enabled = exists
+                    Text(
+                        text = stringResource(R.string.settings_sidebar_dirs_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
 
             // ---- 外观 ----
             SectionHeader(R.string.settings_section_appearance)
@@ -234,6 +221,43 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 color = MaterialTheme.colorScheme.outlineVariant
             )
+
+            // 显示隐藏文件
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onShowHiddenChange(!showHidden) }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Visibility,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.show_hidden_files),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_show_hidden_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = showHidden,
+                    onCheckedChange = onShowHiddenChange
+                )
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
             Spacer(modifier = Modifier.padding(bottom = 16.dp))
         }
 
@@ -245,6 +269,15 @@ fun SettingsScreen(
                     showThemeDialog = false
                 },
                 onDismiss = { showThemeDialog = false }
+            )
+        }
+
+        if (showSidebarDialog) {
+            SidebarDirsDialog(
+                quickDirs = quickDirs,
+                hiddenQuickDirs = hiddenQuickDirs,
+                onToggleQuickDir = onToggleQuickDir,
+                onDismiss = { showSidebarDialog = false }
             )
         }
     }
@@ -305,6 +338,78 @@ private fun ThemeModeDialog(
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+/** 侧栏快捷目录选择对话框 (子菜单) */
+@Composable
+private fun SidebarDirsDialog(
+    quickDirs: List<QuickDir>,
+    hiddenQuickDirs: Set<String>,
+    onToggleQuickDir: (String, Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.sidebar_special_folders)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_change_tip),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                quickDirs.forEach { dir ->
+                    val exists = remember(dir.path) { File(dir.path).exists() }
+                    val hidden = dir.id in hiddenQuickDirs
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = exists) {
+                                onToggleQuickDir(dir.id, !hidden)
+                            }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = dir.icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(dir.labelRes),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (!exists) {
+                                Text(
+                                    text = stringResource(R.string.not_available),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = !hidden,
+                            onCheckedChange = { checked -> onToggleQuickDir(dir.id, !checked) },
+                            enabled = exists
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.ok))
             }
         }
     )
