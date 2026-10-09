@@ -13,13 +13,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -28,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -72,10 +77,11 @@ import java.io.File
 import java.util.Locale
 
 /**
- * 音视频预览对话框 — ExoPlayer 播放 + FFmpeg 解析
+ * 音视频预览 — ExoPlayer 播放 + FFmpeg 解析
  *
- * - 视频: PlayerView 内嵌播放 (系统硬解), 无法播放时回退展示 ffmpeg 抽取的缩略图
- * - 音频: ExoPlayer 播放 + 自定义控制条, 波形图由 ffmpeg 生成
+ * - 视频: 全屏黑底播放器 (PlayerView 铺满屏幕, 悬浮文件名/关闭与媒体信息),
+ *   无法播放时回退展示 ffmpeg 抽取的缩略图
+ * - 音频: 圆角对话框 + 自定义控制条, 波形图由 ffmpeg 生成
  * - 信息区: 容器/时长/总码率/视频流/音频流 (ffprobe 解析)
  * - 无法播放的格式可通过 [onOpenWith] 交给其他应用打开
  */
@@ -160,6 +166,57 @@ fun MediaPreviewDialog(
         }
     }
 
+    if (isVideo) {
+        // 视频: 全屏黑底播放器 (PlayerView 铺满, 悬浮文件名/关闭与媒体信息)
+        VideoFullScreenDialog(
+            item = item,
+            player = player,
+            artworkFile = artworkFile,
+            playFailed = playFailed,
+            mediaInfo = mediaInfo,
+            parsing = parsing,
+            onOpenWith = onOpenWith,
+            onDismiss = onDismiss
+        )
+    } else {
+        // 音频: 圆角对话框 (波形图 + 播放控制条 + 媒体信息)
+        AudioPreviewDialog(
+            item = item,
+            player = player,
+            artworkFile = artworkFile,
+            playFailed = playFailed,
+            isPlaying = isPlaying,
+            sliderState = sliderState,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            mediaInfo = mediaInfo,
+            parsing = parsing,
+            parseFailed = parseFailed,
+            onOpenWith = onOpenWith,
+            onDismiss = onDismiss
+        )
+    }
+}
+
+/**
+ * 音频预览对话框 — 波形图 + 播放控制条 + 媒体信息
+ */
+@Composable
+private fun AudioPreviewDialog(
+    item: FileItem,
+    player: ExoPlayer,
+    artworkFile: File?,
+    playFailed: Boolean,
+    isPlaying: Boolean,
+    sliderState: SliderState,
+    positionMs: Long,
+    durationMs: Long,
+    mediaInfo: MediaProbe.MediaInfo?,
+    parsing: Boolean,
+    parseFailed: Boolean,
+    onOpenWith: () -> Unit,
+    onDismiss: () -> Unit
+) {
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -188,51 +245,47 @@ fun MediaPreviewDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // ---- 媒体区 ----
-                if (isVideo) {
-                    VideoSurface(player = player, artworkFile = artworkFile, playFailed = playFailed)
-                } else {
-                    AudioSurface(artworkFile = artworkFile, parsing = parsing, playFailed = playFailed)
+                AudioSurface(artworkFile = artworkFile, parsing = parsing, playFailed = playFailed)
 
-                    // 音频播放控制条 (播放/暂停 + 进度拖动 + 时间)
-                    if (!playFailed) {
-                        val totalMs = if (durationMs > 0) durationMs else (mediaInfo?.durationMs ?: 0L)
-                        val shownMs = if (sliderState.isDragging) {
-                            (sliderState.value * totalMs).toLong()
-                        } else {
-                            positionMs
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
-                                Icon(
-                                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Text(
-                                text = formatTime(shownMs),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Slider(
-                                state = sliderState,
-                                onValueChange = { sliderState.value = it },
-                                onValueChangeFinished = {
-                                    if (totalMs > 0) player.seekTo((sliderState.value * totalMs).toLong())
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(horizontal = 8.dp)
-                            )
-                            Text(
-                                text = formatTime(totalMs),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                // 音频播放控制条 (播放/暂停 + 进度拖动 + 时间)
+                if (!playFailed) {
+                    val totalMs = if (durationMs > 0) durationMs else (mediaInfo?.durationMs ?: 0L)
+                    val shownMs = if (sliderState.isDragging) {
+                        (sliderState.value * totalMs).toLong()
+                    } else {
+                        positionMs
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
+                        Text(
+                            text = formatTime(shownMs),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Slider(
+                            state = sliderState,
+                            onValueChange = { sliderState.value = it },
+                            onValueChangeFinished = {
+                                if (totalMs > 0) player.seekTo((sliderState.value * totalMs).toLong())
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp)
+                        )
+                        Text(
+                            text = formatTime(totalMs),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
@@ -306,57 +359,158 @@ fun MediaPreviewDialog(
 }
 
 /**
- * 视频播放区: PlayerView 内嵌播放; 播放失败时回退展示缩略图 + 提示
+ * 视频播放 — 全屏黑底对话框
+ *
+ * PlayerView 铺满整屏 (按视频比例居中适配), 顶部/底部为悬浮渐变信息栏:
+ * - 顶栏: 文件名 + 关闭
+ * - 底栏: 媒体信息摘要 / 播放失败提示 + "用其他应用打开"
+ * - 播放失败时回退展示 ffmpeg 抽取的缩略图
  */
 @OptIn(UnstableApi::class)
 @Composable
-private fun VideoSurface(
+private fun VideoFullScreenDialog(
+    item: FileItem,
     player: ExoPlayer,
     artworkFile: File?,
-    playFailed: Boolean
+    playFailed: Boolean,
+    mediaInfo: MediaProbe.MediaInfo?,
+    parsing: Boolean,
+    onOpenWith: () -> Unit,
+    onDismiss: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(220.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
-        if (playFailed) {
-            val bitmap = remember(artworkFile) {
-                artworkFile?.let { BitmapFactory.decodeFile(it.path)?.asImageBitmap() }
-            }
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            if (playFailed) {
+                // 回退: 缩略图居中展示 (无法播放的提示位于底栏内)
+                val bitmap = remember(artworkFile) {
+                    artworkFile?.let { BitmapFactory.decodeFile(it.path)?.asImageBitmap() }
+                }
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+            } else {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            useController = true
+                            keepScreenOn = true
+                            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                            this.player = player
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
                 )
             }
-            Text(
-                text = stringResource(R.string.media_preview_play_failed),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White,
-                textAlign = TextAlign.Center,
+
+            // ---- 顶栏: 文件名 + 关闭 ----
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
+                        )
+                    )
+                    .statusBarsPadding()
+                    .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = item.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.close),
+                        tint = Color.White
+                    )
+                }
+            }
+
+            // ---- 底栏: 媒体信息摘要 / 播放失败提示 + 用其他应用打开 ----
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.6f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            )
-        } else {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        useController = true
-                        setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                        this.player = player
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
+                        )
+                    )
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp)
+            ) {
+                when {
+                    playFailed -> Text(
+                        text = stringResource(R.string.media_preview_play_failed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+
+                    parsing -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = stringResource(R.string.media_preview_parsing),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.9f)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
+                        )
                     }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+
+                    else -> buildMediaSummary(mediaInfo)?.let { summary ->
+                        Text(
+                            text = summary,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White.copy(alpha = 0.8f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = {
+                            player.pause()
+                            onOpenWith()
+                        }
+                    ) {
+                        Text(
+                            text = stringResource(R.string.media_preview_open_with),
+                            color = Color.White
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -450,6 +604,21 @@ private fun buildStreamSummary(stream: MediaProbe.StreamInfo, video: Boolean): S
         }
     }
     return parts.joinToString(" · ").ifEmpty { "-" }
+}
+
+/** 单行媒体摘要: "MP4 · 1:32 · H264 · 1920x1080 · AAC" (无有效字段时返回 null) */
+private fun buildMediaSummary(info: MediaProbe.MediaInfo?): String? {
+    val mediaInfo = info ?: return null
+    val parts = buildList {
+        mediaInfo.formatLong?.let { add(it) }
+        mediaInfo.durationMs?.takeIf { it > 0 }?.let { add(formatTime(it)) }
+        mediaInfo.video?.let { video ->
+            video.codec?.let { add(it) }
+            if (video.width != null && video.height != null) add("${video.width}x${video.height}")
+        }
+        mediaInfo.audio?.let { audio -> audio.codec?.let { add(it) } }
+    }
+    return parts.joinToString(" · ").ifEmpty { null }
 }
 
 /** 毫秒 -> "mm:ss" (超过 1 小时为 "h:mm:ss") */

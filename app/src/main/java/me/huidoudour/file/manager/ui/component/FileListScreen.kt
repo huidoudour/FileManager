@@ -309,16 +309,27 @@ fun FileListScreen(
         )
     }
 
-    // 音视频预览对话框 (ExoPlayer 播放 + ffmpeg 解析)
+    // 图片预览 (全屏查看器) / 音视频预览对话框 (ExoPlayer 播放 + ffmpeg 解析)
     previewTarget?.let { target ->
-        MediaPreviewDialog(
-            item = target,
-            onOpenWith = {
-                previewTarget = null
-                onOpenWith?.invoke(target)
-            },
-            onDismiss = { previewTarget = null }
-        )
+        when (FileTypeUtil.getCategory(target)) {
+            FileCategory.IMAGE -> ImagePreviewDialog(
+                item = target,
+                onOpenWith = {
+                    previewTarget = null
+                    onOpenWith?.invoke(target)
+                },
+                onDismiss = { previewTarget = null }
+            )
+
+            else -> MediaPreviewDialog(
+                item = target,
+                onOpenWith = {
+                    previewTarget = null
+                    onOpenWith?.invoke(target)
+                },
+                onDismiss = { previewTarget = null }
+            )
+        }
     }
 
     // 页面切换（主界面 ↔ 设置页）：完全照搬 Dtool 的 AnimatedContent 联动过渡,
@@ -639,13 +650,18 @@ fun FileListScreen(
                                                         }
                                                         else -> {
                                                             val category = FileTypeUtil.getCategory(fileItem)
-                                                            if (!pickerMode && !saveMode && MediaProbe.isSupported &&
-                                                                (category == FileCategory.VIDEO || category == FileCategory.AUDIO)
-                                                            ) {
+                                                            when {
+                                                                // 图片文件: 打开内置图片预览 (全屏查看器)
+                                                                !pickerMode && !saveMode &&
+                                                                    category == FileCategory.IMAGE ->
+                                                                    previewTarget = fileItem
+
                                                                 // 音视频文件: 打开内置预览 (解析信息/缩略图/波形 + 播放)
-                                                                previewTarget = fileItem
-                                                            } else {
-                                                                onFileSelected?.invoke(fileItem)
+                                                                !pickerMode && !saveMode && MediaProbe.isSupported &&
+                                                                    (category == FileCategory.VIDEO || category == FileCategory.AUDIO) ->
+                                                                    previewTarget = fileItem
+
+                                                                else -> onFileSelected?.invoke(fileItem)
                                                             }
                                                         }
                                                     }

@@ -216,6 +216,9 @@
     <string name="settings_show_thumbnails_desc">为图片与视频加载缩略图</string>
     <string name="settings_show_hidden_desc">在文件列表中显示隐藏的文件和文件夹</string>
 
+    <!-- 图片预览 -->
+    <string name="image_preview_load_failed">无法加载此图片，可通过其他应用打开</string>
+
     <!-- 音视频预览 -->
     <string name="media_preview_open_with">用其他应用打开</string>
     <string name="media_preview_parsing">正在解析媒体信息…</string>
