@@ -115,6 +115,8 @@ import java.io.File
 @Composable
 fun FileListScreen(
     viewModel: FileManagerViewModel,
+    openPlayerRequest: FileItem? = null,
+    onOpenPlayerRequestConsumed: (() -> Unit)? = null,
     onFileSelected: ((FileItem) -> Unit)? = null,
     onPickCancelled: (() -> Unit)? = null,
     onSaveConfirmed: (() -> Unit)? = null,
@@ -208,6 +210,14 @@ fun FileListScreen(
         toastMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearToast()
+        }
+    }
+
+    // 点击系统媒体通知回到应用: 重新打开音频播放界面 (无缝续播当前曲目)
+    LaunchedEffect(openPlayerRequest) {
+        openPlayerRequest?.let {
+            previewTarget = it
+            onOpenPlayerRequestConsumed?.invoke()
         }
     }
 

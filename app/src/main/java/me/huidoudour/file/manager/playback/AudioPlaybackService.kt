@@ -1,13 +1,23 @@
 package me.huidoudour.file.manager.playback
 
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
+import androidx.core.content.edit
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import me.huidoudour.file.manager.MainActivity
+
+/** 与 ViewModel / 播放对话框共用同一偏好文件 */
+private const val PREFS_NAME = "file_manager_prefs"
+
+/** 当前播放曲目路径 (点击媒体通知重新打开播放界面时由 MainActivity 读取) */
+private const val KEY_CURRENT_PATH = "audio_current_path"
 
 /**
  * 音频后台播放服务 — MediaSessionService
@@ -18,10 +28,13 @@ import me.huidoudour.file.manager.MainActivity
  * - 播放列表由 UI 侧通过 MediaController 下发, 支持自动顺序续播
  *
  * UI 侧通过 MediaController 连接本服务, 关闭预览对话框仅断开控制器, 不影响后台播放。
+ * 点击系统媒体通知回到应用时, 会重新打开播放界面 (见 [createSessionActivity])。
  */
 class AudioPlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
+
+    private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
     override fun onCreate() {
         super.onCreate()
@@ -39,6 +52,14 @@ class AudioPlaybackService : MediaSessionService() {
             // 后台播放保持 CPU 唤醒 (配合 WAKE_LOCK 权限)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
+
+        // 记录当前播放曲目路径: 点击系统媒体通知重新打开播放界面时使用
+        // (媒体项为 null / 清空列表时自动移除该记录)
+        player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                prefs.edit { putString(KEY_CURRENT_PATH, mediaItem?.mediaId) }
+            }
+        })
 
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(createSessionActivity())
@@ -62,12 +83,16 @@ class AudioPlaybackService : MediaSessionService() {
             release()
         }
         mediaSession = null
+        // 服务停止后不再提供"回到播放界面"入口, 清除曲目记录
+        prefs.edit { remove(KEY_CURRENT_PATH) }
         super.onDestroy()
     }
 
-    /** 点击系统媒体通知/锁屏卡片时回到应用 */
+    /** 点击系统媒体通知/锁屏卡片时回到应用, 并重新打开音频播放界面 */
     private fun createSessionActivity(): PendingIntent {
-        val intent = Intent(this, MainActivity::class.java)
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_OPEN_PLAYER
+        }
         return PendingIntent.getActivity(
             this,
             0,

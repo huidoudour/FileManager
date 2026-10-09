@@ -48,6 +48,12 @@ class MainActivity : ComponentActivity() {
      */
     private var exitStyle by mutableStateOf<ExitStyle?>(null)
 
+    /**
+     * 待打开的音频播放界面请求 (点击系统媒体通知回到应用时设置)；
+     * 由 FileListScreen 消费后清空。
+     */
+    private var openPlayerRequest by mutableStateOf<FileItem?>(null)
+
     // 权限请求 launcher
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
@@ -90,6 +96,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     FileListScreen(
                         viewModel = viewModel,
+                        openPlayerRequest = openPlayerRequest,
+                        onOpenPlayerRequestConsumed = { openPlayerRequest = null },
                         onFileSelected = { file ->
                             if (isPickerMode) {
                                 returnFileToCaller(file)
@@ -151,9 +159,41 @@ class MainActivity : ComponentActivity() {
                     // 桌面快捷方式：打开指定目录
                     it.getStringExtra(EXTRA_PATH)?.let { path -> viewModel.loadDirectory(path) }
                 }
+                ACTION_OPEN_PLAYER -> {
+                    // 系统媒体通知：回到应用并重新打开音频播放界面
+                    requestOpenAudioPlayer()
+                }
             }
         }
     }
+
+    /**
+     * 点击系统媒体通知回到应用时：恢复音频播放界面。
+     *
+     * 后台播放的当前曲目路径由 [me.huidoudour.file.manager.playback.AudioPlaybackService]
+     * 写入偏好设置，这里读取并转为请求交给 FileListScreen 打开播放对话框 (无缝续播当前曲目)。
+     */
+    private fun requestOpenAudioPlayer() {
+        val path = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getString(KEY_AUDIO_CURRENT_PATH, null) ?: return
+        val file = File(path)
+        if (!file.isFile) return
+        openPlayerRequest = file.toFileItem()
+    }
+
+    /** File -> FileItem 转换 (与 ViewModel / 播放对话框保持一致) */
+    private fun File.toFileItem(): FileItem = FileItem(
+        name = name,
+        path = absolutePath,
+        parentPath = parent ?: "",
+        isDirectory = isDirectory,
+        size = if (isFile) length() else 0L,
+        lastModified = lastModified(),
+        extension = if (isFile) extension else "",
+        canRead = canRead(),
+        canWrite = canWrite(),
+        isHidden = isHidden
+    )
 
     /**
      * 处理 ACTION_SEND / ACTION_SEND_MULTIPLE 分享意图
@@ -293,6 +333,15 @@ class MainActivity : ComponentActivity() {
 
         /** 通过 Intent 打开指定目录的 Action (桌面快捷方式使用) */
         private const val ACTION_OPEN_PATH = "me.huidoudour.file.manager.action.OPEN_PATH"
+
+        /** 点击系统媒体通知重新打开播放界面的 Action (由 AudioPlaybackService 使用) */
+        const val ACTION_OPEN_PLAYER = "me.huidoudour.file.manager.action.OPEN_PLAYER"
+
+        /** 偏好文件名 (与 ViewModel / 播放对话框共用) */
+        private const val PREFS_NAME = "file_manager_prefs"
+
+        /** 后台播放当前曲目路径的偏好键 (由 AudioPlaybackService 写入) */
+        private const val KEY_AUDIO_CURRENT_PATH = "audio_current_path"
 
         /** 目标目录路径 Extra */
         private const val EXTRA_PATH = "me.huidoudour.file.manager.extra.PATH"

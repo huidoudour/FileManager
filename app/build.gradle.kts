@@ -10,7 +10,7 @@ plugins {
 // ── Git 版本控制 ──
 val backVersionCode = 20
 val baseVersionCode = 10
-val baseVersionName = "26.10.08"
+val baseVersionName = "26.10.09"
 
 fun Project.gitCommitCount(): Int = try {
     providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
@@ -94,8 +94,6 @@ android {
     buildFeatures {
         compose = true
     }
-    // 注: 不排除 libandroidx.graphics.path.so (含 4 ABI) — 作为 32 位设备
-    // (armeabi-v7a / x86) 的 ABI 兼容锚点使 APK 可安装; minSdk 29+ 运行时不加载该库
     lint {
         warningsAsErrors = false
         abortOnError = true

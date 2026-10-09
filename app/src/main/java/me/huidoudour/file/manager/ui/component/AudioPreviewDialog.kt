@@ -13,9 +13,9 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,10 +24,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MusicNote
@@ -90,6 +93,8 @@ import me.huidoudour.file.manager.playback.AudioPlaybackService
 import me.huidoudour.file.manager.util.FileCategory
 import me.huidoudour.file.manager.util.FileSortUtil
 import me.huidoudour.file.manager.util.FileTypeUtil
+import me.huidoudour.file.manager.util.Lyrics
+import me.huidoudour.file.manager.util.LyricsUtil
 import me.huidoudour.file.manager.util.MediaProbe
 import me.huidoudour.file.manager.util.SortMode
 import java.io.File
@@ -230,6 +235,13 @@ internal fun AudioPreviewDialog(
     // 当前播放曲目 (随自动续播/切歌变化)
     val currentItem = playlist.getOrNull(currentIndex) ?: item
 
+    // ---- 智能歌词识别: 查找与当前曲目同名的歌词文件 (.lrc 优先, 其次 .txt) ----
+    var lyrics by remember { mutableStateOf<Lyrics?>(null) }
+
+    LaunchedEffect(currentItem.path) {
+        lyrics = LyricsUtil.find(currentItem.path)
+    }
+
     // ---- FFmpeg 解析当前曲目: 媒体信息 + 波形图 ----
     var parsing by remember { mutableStateOf(true) }
     var parseFailed by remember { mutableStateOf(false) }
@@ -354,10 +366,17 @@ internal fun AudioPreviewDialog(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // ---- 波形区 ----
-                AudioSurface(artworkFile = artworkFile, parsing = parsing, playFailed = playFailed)
+                // ---- 显示区: 识别到同名歌词则智能显示歌词, 否则显示波形图 ----
+                AudioSurface(
+                    artworkFile = artworkFile,
+                    parsing = parsing,
+                    playFailed = playFailed,
+                    lyrics = lyrics,
+                    positionMs = positionMs
+                )
 
-                // ---- 播放控制: 模式 | 上一首/播放/下一首 | 序号 ----
+                // ---- 播放控制: 左端模式 | 中间上一首/播放/下一首 | 右端用其他应用打开 ----
+                // (两端按钮与下方"信息/关闭"按钮行对齐, 与中间控制按钮拉开距离防误触)
                 if (!playFailed) {
                     var showModeMenu by remember { mutableStateOf(false) }
                     Row(
@@ -428,13 +447,13 @@ internal fun AudioPreviewDialog(
                             )
                         }
                         Spacer(modifier = Modifier.weight(1f))
-                        Text(
-                            text = stringResource(
-                                R.string.audio_playlist_index, currentIndex + 1, playlist.size
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        // 用其他应用打开 (右端): 与下方"关闭"按钮对齐, 远离控制按钮防误触
+                        IconButton(onClick = { onOpenWith(currentItem) }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = stringResource(R.string.media_preview_open_with)
+                            )
+                        }
                     }
 
                     // ---- 进度条 ----
@@ -520,27 +539,47 @@ internal fun AudioPreviewDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // ---- 底部按钮: 详细信息 (左) | 用其他应用打开 / 关闭 (右) ----
+                // ---- 底部按钮: 信息 (左) | 播放序号 (中) | [播放失败时] 用其他应用打开 / 关闭 (右) ----
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = { showDetails = !showDetails }) {
-                        Text(
-                            text = stringResource(
-                                if (showDetails) R.string.audio_details_collapse
-                                else R.string.audio_details
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        TextButton(onClick = { showDetails = !showDetails }) {
+                            Text(
+                                text = stringResource(
+                                    if (showDetails) R.string.audio_details_collapse
+                                    else R.string.audio_details
+                                )
                             )
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { onOpenWith(currentItem) }) {
-                            Text(stringResource(R.string.media_preview_open_with))
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        TextButton(onClick = onDismiss) {
-                            Text(stringResource(R.string.close))
+                    }
+                    // 播放序号: 位于"信息"与"关闭"正中间 (两侧等权重保证居中)
+                    Text(
+                        text = stringResource(
+                            R.string.audio_playlist_index, currentIndex + 1, playlist.size
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // 播放失败时播放控制行整体隐藏, 在底部保留"用其他应用打开"入口
+                            if (playFailed) {
+                                TextButton(onClick = { onOpenWith(currentItem) }) {
+                                    Text(stringResource(R.string.media_preview_open_with))
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            TextButton(onClick = onDismiss) {
+                                Text(stringResource(R.string.close))
+                            }
                         }
                     }
                 }
@@ -590,13 +629,16 @@ private fun FileItem.toMediaItem(): MediaItem = MediaItem.Builder()
     .build()
 
 /**
- * 音频展示区: 波形图 (ffmpeg 生成); 无波形时显示占位图标
+ * 音频展示区: 识别到同名歌词时智能显示歌词 (LRC 同步高亮 / 纯文本静态), 否则显示波形图;
+ * 无波形时显示占位图标
  */
 @Composable
 private fun AudioSurface(
     artworkFile: File?,
     parsing: Boolean,
-    playFailed: Boolean
+    playFailed: Boolean,
+    lyrics: Lyrics?,
+    positionMs: Long
 ) {
     Box(
         modifier = Modifier
@@ -606,30 +648,35 @@ private fun AudioSurface(
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
         contentAlignment = Alignment.Center
     ) {
-        val bitmap = remember(artworkFile) {
-            artworkFile?.let { BitmapFactory.decodeFile(it.path)?.asImageBitmap() }
-        }
-        when {
-            bitmap != null -> Image(
-                bitmap = bitmap,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(12.dp),
-                contentScale = ContentScale.Fit
-            )
+        if (lyrics != null) {
+            // 智能显示歌词: LRC 同步高亮滚动 / 纯文本静态展示
+            LyricsPanel(lyrics = lyrics, positionMs = positionMs)
+        } else {
+            val bitmap = remember(artworkFile) {
+                artworkFile?.let { BitmapFactory.decodeFile(it.path)?.asImageBitmap() }
+            }
+            when {
+                bitmap != null -> Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(12.dp),
+                    contentScale = ContentScale.Fit
+                )
 
-            parsing -> CircularProgressIndicator(
-                modifier = Modifier.size(28.dp),
-                strokeWidth = 3.dp
-            )
+                parsing -> CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    strokeWidth = 3.dp
+                )
 
-            else -> Icon(
-                imageVector = Icons.Filled.MusicNote,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-            )
+                else -> Icon(
+                    imageVector = Icons.Filled.MusicNote,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+            }
         }
         if (playFailed) {
             Text(
@@ -642,6 +689,53 @@ private fun AudioSurface(
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f))
                     .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
+/**
+ * 歌词面板: LRC 同步歌词随播放进度高亮当前行并自动滚动; 纯文本歌词静态展示
+ */
+@Composable
+private fun LyricsPanel(lyrics: Lyrics, positionMs: Long) {
+    val listState = rememberLazyListState()
+    val currentIndex = if (lyrics.isSynced) {
+        lyrics.lines.indexOfLast { line ->
+            val time = line.timeMs
+            time != null && time <= positionMs
+        }
+    } else {
+        -1
+    }
+
+    // 当前行变化时平滑滚动, 让高亮行大致位于视口中部
+    LaunchedEffect(currentIndex) {
+        if (currentIndex >= 0) {
+            listState.animateScrollToItem((currentIndex - 2).coerceAtLeast(0))
+        }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+    ) {
+        items(lyrics.lines.size) { index ->
+            val focused = index == currentIndex
+            Text(
+                text = lyrics.lines[index].text.ifEmpty { "♪" },
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (focused) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                },
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
             )
         }
     }
