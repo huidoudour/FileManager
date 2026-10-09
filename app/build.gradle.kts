@@ -8,9 +8,9 @@ plugins {
 }
 
 // ── Git 版本控制 ──
-val backVersionCode = 11
-val baseVersionCode = 2
-val baseVersionName = "26.4"
+val backVersionCode = 20
+val baseVersionCode = 10
+val baseVersionName = "26.10"
 
 fun Project.gitCommitCount(): Int = try {
     providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
@@ -40,6 +40,10 @@ android {
         targetSdk = 37
         versionCode = appVersionCode
         versionName = appVersionName
+
+        ndk {
+            abiFilters += setOf( "arm64-v8a" , "x86_64" )
+        }
     }
     val useSignKey = rootProject.hasProperty("storeFile") &&
             rootProject.hasProperty("storePassword") &&
@@ -148,8 +152,9 @@ dependencies {
     //noinspection UseTomlInstead
     implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-alpha03")
 
-    // FFmpeg (音视频解析/缩略图/波形) 与 ExoPlayer (音视频预览播放)
+    // FFmpeg (音视频解析/缩略图/波形) 与 media3 (播放 / 媒体会话系统控制 / 后台播放)
     implementation(libs.dev.ffmpegkit.min)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.session)
 }

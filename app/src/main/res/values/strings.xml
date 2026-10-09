@@ -229,4 +229,14 @@
     <string name="media_info_total_bitrate">总码率</string>
     <string name="media_info_video">视频</string>
     <string name="media_info_audio">音频</string>
+
+    <!-- 音频播放 -->
+    <string name="audio_background_play">后台播放</string>
+    <string name="audio_prev">上一首</string>
+    <string name="audio_next">下一首</string>
+    <string name="audio_playlist_index">%1$d/%2$d</string>
+    <string name="audio_mode_sequential">顺序播放</string>
+    <string name="audio_mode_repeat_all">列表循环</string>
+    <string name="audio_mode_repeat_one">单曲循环</string>
+    <string name="audio_mode_shuffle">随机播放</string>
 </resources>

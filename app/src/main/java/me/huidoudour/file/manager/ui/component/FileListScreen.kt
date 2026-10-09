@@ -309,7 +309,7 @@ fun FileListScreen(
         )
     }
 
-    // 图片预览 (全屏查看器) / 音视频预览对话框 (ExoPlayer 播放 + ffmpeg 解析)
+    // 图片预览 (全屏查看器) / 音视频预览 (视频全屏播放; 音频播放列表 + 后台播放)
     previewTarget?.let { target ->
         when (FileTypeUtil.getCategory(target)) {
             FileCategory.IMAGE -> ImagePreviewDialog(
@@ -321,11 +321,12 @@ fun FileListScreen(
                 onDismiss = { previewTarget = null }
             )
 
+            // 音视频分支: onOpenWith 携带当前曲目 (音频自动续播后可能已切换)
             else -> MediaPreviewDialog(
                 item = target,
-                onOpenWith = {
+                onOpenWith = { current ->
                     previewTarget = null
-                    onOpenWith?.invoke(target)
+                    onOpenWith?.invoke(current)
                 },
                 onDismiss = { previewTarget = null }
             )
