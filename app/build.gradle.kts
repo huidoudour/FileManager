@@ -94,9 +94,6 @@ android {
         }
     }
     lint {
-        disable += setOf("SelectedPhotoAccess", "PhotoAndVideoPolicy")
-    }
-    lint {
         warningsAsErrors = false
         abortOnError = true
         disable += setOf(
@@ -112,7 +109,9 @@ android {
             "Autofill",                // 不强制自动填充提示
             "FragmentTagUsage",        // 允许使用fragment标签
             "GradleDependency",        // 不强制更新依赖
-            "NewerVersionAvailable"    // 不强制更新到最新版本
+            "NewerVersionAvailable",   // 不强制更新到最新版本
+            "SelectedPhotoAccess",     // 忽略照片权限警告
+            "PhotoAndVideoPolicy"      // 忽略照片权限警告
         )
         checkOnly += setOf(
             "NotSibling",              // 必须检查布局引用错误
@@ -148,4 +147,9 @@ dependencies {
     implementation(libs.androidx.compose.ui.test.manifest)
     //noinspection UseTomlInstead
     implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-alpha03")
+
+    // FFmpeg (音视频解析/缩略图/波形) 与 ExoPlayer (音视频预览播放)
+    implementation(libs.dev.ffmpegkit.min)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
 }

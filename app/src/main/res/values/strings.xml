@@ -215,4 +215,15 @@
     <string name="settings_show_thumbnails">显示缩略图</string>
     <string name="settings_show_thumbnails_desc">为图片与视频加载缩略图</string>
     <string name="settings_show_hidden_desc">在文件列表中显示隐藏的文件和文件夹</string>
+
+    <!-- 音视频预览 -->
+    <string name="media_preview_open_with">用其他应用打开</string>
+    <string name="media_preview_parsing">正在解析媒体信息…</string>
+    <string name="media_preview_parse_failed">无法解析此文件的媒体信息</string>
+    <string name="media_preview_play_failed">当前设备无法播放此文件，可通过其他应用打开</string>
+    <string name="media_info_format">容器</string>
+    <string name="media_info_duration">时长</string>
+    <string name="media_info_total_bitrate">总码率</string>
+    <string name="media_info_video">视频</string>
+    <string name="media_info_audio">音频</string>
 </resources>

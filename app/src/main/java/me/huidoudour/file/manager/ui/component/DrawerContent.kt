@@ -98,11 +98,13 @@ fun DrawerContent(
     val quickDirs = allQuickDirs.filter { it.id !in hiddenQuickDirs && File(it.path).exists() }
 
     val context = LocalContext.current
-    val versionName = remember {
+    // 完整版本信息: 版本名 (versionName) + 版本号 (versionCode)
+    val versionLabel = remember {
         try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0"
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            "FileManager v${info.versionName ?: "1.0"} (${info.longVersionCode})"
         } catch (_: Exception) {
-            "1.0"
+            "FileManager v1.0"
         }
     }
 
@@ -228,7 +230,7 @@ fun DrawerContent(
                     .padding(horizontal = 24.dp, vertical = 16.dp)
             ) {
                 Text(
-                    text = "FileManager v$versionName",
+                    text = versionLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     textAlign = TextAlign.Center,

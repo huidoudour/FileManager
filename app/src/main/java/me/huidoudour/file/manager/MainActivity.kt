@@ -113,6 +113,7 @@ class MainActivity : ComponentActivity() {
                         onShareFiles = { files ->
                             shareFiles(files)
                         },
+                        onOpenWith = ::openFile,
                         onCreateShortcut = { path ->
                             pinShortcut(path)
                         },

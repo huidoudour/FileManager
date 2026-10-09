@@ -102,6 +102,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
+import me.huidoudour.file.manager.util.FileCategory
+import me.huidoudour.file.manager.util.FileTypeUtil
+import me.huidoudour.file.manager.util.MediaProbe
 import me.huidoudour.file.manager.util.SortMode
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
@@ -117,6 +120,7 @@ fun FileListScreen(
     onSaveConfirmed: (() -> Unit)? = null,
     onSaveCancelled: (() -> Unit)? = null,
     onShareFiles: ((List<FileItem>) -> Unit)? = null,
+    onOpenWith: ((FileItem) -> Unit)? = null,
     onCreateShortcut: ((String) -> Unit)? = null,
     onExitApp: (() -> Unit)? = null
 ) {
@@ -156,6 +160,7 @@ fun FileListScreen(
     var renameTarget by remember { mutableStateOf<FileItem?>(null) }
     var deleteTargets by remember { mutableStateOf<List<FileItem>?>(null) }
     var actionTarget by remember { mutableStateOf<FileItem?>(null) }
+    var previewTarget by remember { mutableStateOf<FileItem?>(null) }
     var fabExpanded by remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -301,6 +306,18 @@ fun FileListScreen(
             stats = propertiesStats,
             formatDate = { viewModel.formatDate(it) },
             onDismiss = { viewModel.closeProperties() }
+        )
+    }
+
+    // 音视频预览对话框 (ExoPlayer 播放 + ffmpeg 解析)
+    previewTarget?.let { target ->
+        MediaPreviewDialog(
+            item = target,
+            onOpenWith = {
+                previewTarget = null
+                onOpenWith?.invoke(target)
+            },
+            onDismiss = { previewTarget = null }
         )
     }
 
@@ -620,7 +637,17 @@ fun FileListScreen(
                                                             if (searching) viewModel.closeSearch()
                                                             viewModel.navigateToDirectory(fileItem)
                                                         }
-                                                        else -> onFileSelected?.invoke(fileItem)
+                                                        else -> {
+                                                            val category = FileTypeUtil.getCategory(fileItem)
+                                                            if (!pickerMode && !saveMode && MediaProbe.isSupported &&
+                                                                (category == FileCategory.VIDEO || category == FileCategory.AUDIO)
+                                                            ) {
+                                                                // 音视频文件: 打开内置预览 (解析信息/缩略图/波形 + 播放)
+                                                                previewTarget = fileItem
+                                                            } else {
+                                                                onFileSelected?.invoke(fileItem)
+                                                            }
+                                                        }
                                                     }
                                                 },
                                                 onIconClick = if (pickerMode || saveMode) {
