@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.LooksOne
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -104,26 +105,28 @@ private const val PREFS_NAME = "file_manager_prefs"
 private const val KEY_BACKGROUND_PLAY = "audio_background_play"
 private const val KEY_PLAY_MODE = "audio_play_mode"
 
-/** 音频播放方式: 顺序 / 列表循环 / 单曲循环 / 随机 (映射 ExoPlayer 的 repeatMode + shuffle) */
+/** 单曲播放标志: 播完当前曲目暂停 (服务端监听该偏好并同步到 ExoPlayer.pauseAtEndOfMediaItems) */
+private const val KEY_PAUSE_AT_END = "audio_pause_at_end"
+
+/**
+ * 音频播放方式: 顺序 / 列表循环 / 单曲循环 / 随机 / 单曲播放
+ * (映射 ExoPlayer 的 repeatMode + shuffle; 单曲播放的"播完暂停"由服务端 pauseAtEndOfMediaItems 实现)
+ *
+ * 注意: 持久化值 = ordinal, 新增项必须追加在末尾, 避免历史数据错位。
+ */
 private enum class AudioPlayMode(
     @StringRes val labelRes: Int,
     val icon: ImageVector,
     val repeatMode: Int,
-    val shuffle: Boolean
+    val shuffle: Boolean,
+    /** 播完当前曲目暂停 (单曲播放) */
+    val pauseAtEnd: Boolean = false
 ) {
     SEQUENTIAL(R.string.audio_mode_sequential, Icons.AutoMirrored.Filled.PlaylistPlay, Player.REPEAT_MODE_OFF, false),
     REPEAT_ALL(R.string.audio_mode_repeat_all, Icons.Filled.Repeat, Player.REPEAT_MODE_ALL, false),
     REPEAT_ONE(R.string.audio_mode_repeat_one, Icons.Filled.RepeatOne, Player.REPEAT_MODE_ONE, false),
-    SHUFFLE(R.string.audio_mode_shuffle, Icons.Filled.Shuffle, Player.REPEAT_MODE_ALL, true);
-
-    companion object {
-        fun fromPlayer(repeatMode: Int, shuffle: Boolean): AudioPlayMode = when {
-            shuffle -> SHUFFLE
-            repeatMode == Player.REPEAT_MODE_ONE -> REPEAT_ONE
-            repeatMode == Player.REPEAT_MODE_ALL -> REPEAT_ALL
-            else -> SEQUENTIAL
-        }
-    }
+    SHUFFLE(R.string.audio_mode_shuffle, Icons.Filled.Shuffle, Player.REPEAT_MODE_ALL, true),
+    PLAY_ONCE(R.string.audio_mode_play_once, Icons.Filled.LooksOne, Player.REPEAT_MODE_OFF, false, pauseAtEnd = true);
 }
 
 /**
@@ -133,7 +136,8 @@ private enum class AudioPlayMode(
  * - 通过 MediaController 连接 [AudioPlaybackService] (MediaSessionService):
  *   播放时系统媒体控制 (通知栏 / 锁屏 / 耳机按键) 可直接控制
  * - 右上角"后台播放"开关: 开启后关闭对话框仍继续播放, 列表内自动顺序续播
- * - 播放模式: 顺序 / 列表循环 / 单曲循环 / 随机 (持久化到偏好设置)
+ * - 播放模式: 顺序 / 列表循环 / 单曲循环 / 随机 / 单曲播放 (持久化到偏好设置;
+ *   单曲播放为播完当前曲目暂停, 不自动续播与循环)
  */
 @Composable
 internal fun AudioPreviewDialog(
@@ -196,9 +200,15 @@ internal fun AudioPreviewDialog(
     LaunchedEffect(controller) {
         val c = controller ?: return@LaunchedEffect
         if (c.currentMediaItem?.mediaId == item.path) {
-            playMode = AudioPlayMode.fromPlayer(c.repeatMode, c.shuffleModeEnabled)
-            if (c.playbackState == Player.STATE_ENDED) c.seekTo(0, 0L)
-            if (!c.isPlaying) c.play()
+            // 播放模式以偏好设置为准 (单曲播放与顺序播放的 repeatMode 相同, 无法从播放器状态反推)
+            when {
+                c.playbackState == Player.STATE_ENDED -> {
+                    c.seekTo(0, 0L)
+                    c.play()
+                }
+                // 播完自动暂停 (停在曲目末尾) 时不自动续播, 等待用户操作
+                !c.isPlaying && !c.isPausedAtItemEnd() -> c.play()
+            }
         } else {
             c.setMediaItems(playlist.map { it.toMediaItem() }, startIndex, 0L)
             c.repeatMode = playMode.repeatMode
@@ -294,6 +304,11 @@ internal fun AudioPreviewDialog(
         val c = controller ?: return
         when {
             c.isPlaying -> c.pause()
+            // 单曲播放: 播完自动暂停后再次点击播放 -> 从头重播当前曲目
+            c.isPausedAtItemEnd() -> {
+                c.seekTo(0, 0L)
+                c.play()
+            }
             c.playbackState == Player.STATE_ENDED -> {
                 c.seekTo(0, 0L)
                 c.play()
@@ -307,7 +322,10 @@ internal fun AudioPreviewDialog(
 
     fun applyPlayMode(mode: AudioPlayMode) {
         playMode = mode
-        prefs.edit { putInt(KEY_PLAY_MODE, mode.ordinal) }
+        prefs.edit {
+            putInt(KEY_PLAY_MODE, mode.ordinal)
+            putBoolean(KEY_PAUSE_AT_END, mode.pauseAtEnd)
+        }
         controller?.run {
             repeatMode = mode.repeatMode
             shuffleModeEnabled = mode.shuffle
@@ -627,6 +645,10 @@ private fun FileItem.toMediaItem(): MediaItem = MediaItem.Builder()
     .setMediaId(path)
     .setMediaMetadata(MediaMetadata.Builder().setTitle(name).build())
     .build()
+
+/** 播放器是否暂停在曲目末尾 (单曲播放的"播完自动暂停"状态; 位置与时长差距容 500ms) */
+private fun Player.isPausedAtItemEnd(): Boolean =
+    duration > 0 && currentPosition >= duration - 500
 
 /**
  * 音频展示区: 识别到同名歌词时智能显示歌词 (LRC 同步高亮 / 纯文本静态), 否则显示波形图;

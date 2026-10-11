@@ -3,6 +3,7 @@ package me.huidoudour.file.manager.playback
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import androidx.core.content.edit
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -19,6 +20,9 @@ private const val PREFS_NAME = "file_manager_prefs"
 /** 当前播放曲目路径 (点击媒体通知重新打开播放界面时由 MainActivity 读取) */
 private const val KEY_CURRENT_PATH = "audio_current_path"
 
+/** 单曲播放标志 (播放对话框下发; MediaController 无法设置 pauseAtEndOfMediaItems, 由服务端监听同步) */
+private const val KEY_PAUSE_AT_END = "audio_pause_at_end"
+
 /**
  * 音频后台播放服务 — MediaSessionService
  *
@@ -26,6 +30,7 @@ private const val KEY_CURRENT_PATH = "audio_current_path"
  * - 注册媒体会话后, 系统媒体控制 (通知栏 / 锁屏 / 耳机按键) 可直接控制播放
  * - 应用退到后台后继续播放 (前台服务类型 mediaPlayback, 自动发布媒体通知)
  * - 播放列表由 UI 侧通过 MediaController 下发, 支持自动顺序续播
+ * - 单曲播放: UI 侧通过偏好下发标志, 服务端映射到 ExoPlayer.pauseAtEndOfMediaItems (播完暂停)
  *
  * UI 侧通过 MediaController 连接本服务, 关闭预览对话框仅断开控制器, 不影响后台播放。
  * 点击系统媒体通知回到应用时, 会重新打开播放界面 (见 [createSessionActivity])。
@@ -35,6 +40,9 @@ class AudioPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
 
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+
+    /** 单曲播放偏好监听器 (需强引用持有, SharedPreferences 内部注册为弱引用) */
+    private var pauseAtEndPrefListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -61,6 +69,16 @@ class AudioPlaybackService : MediaSessionService() {
             }
         })
 
+        // 单曲播放: 播完当前曲目暂停 (MediaController 无法设置 pauseAtEndOfMediaItems, 监听 UI 下发的偏好同步)
+        player.pauseAtEndOfMediaItems = prefs.getBoolean(KEY_PAUSE_AT_END, false)
+        val pauseAtEndListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_PAUSE_AT_END) {
+                player.pauseAtEndOfMediaItems = prefs.getBoolean(KEY_PAUSE_AT_END, false)
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(pauseAtEndListener)
+        pauseAtEndPrefListener = pauseAtEndListener
+
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(createSessionActivity())
             .build()
@@ -78,6 +96,8 @@ class AudioPlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        pauseAtEndPrefListener?.let { prefs.unregisterOnSharedPreferenceChangeListener(it) }
+        pauseAtEndPrefListener = null
         mediaSession?.run {
             player.release()
             release()
