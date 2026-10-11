@@ -224,6 +224,7 @@
     <string name="media_preview_parsing">正在解析媒体信息…</string>
     <string name="media_preview_parse_failed">无法解析此文件的媒体信息</string>
     <string name="media_preview_play_failed">当前设备无法播放此文件，可通过其他应用打开</string>
+    <string name="media_preview_speed_boost">%1$dx 播放</string>
     <string name="media_info_format">容器</string>
     <string name="media_info_duration">时长</string>
     <string name="media_info_total_bitrate">总码率</string>
