@@ -36,7 +36,7 @@ android {
     }
     defaultConfig {
         applicationId = namespace
-        minSdk = 29
+        minSdk = 28
         targetSdk = 37
         versionCode = appVersionCode
         versionName = appVersionName
