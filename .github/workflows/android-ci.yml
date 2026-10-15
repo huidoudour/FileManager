@@ -38,7 +38,7 @@ jobs:
           yes | "$SDKMANAGER" --licenses > /dev/null || true
 
       - name: Enable Gradle cache
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # No signing properties are passed, so the release build type falls back
       # to the debug signing config and produces a runnable release APK
