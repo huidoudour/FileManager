@@ -18,7 +18,7 @@ jobs:
     steps:
       # Version numbering depends on the commit count; fetch the full history
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
