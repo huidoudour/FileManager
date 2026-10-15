@@ -147,7 +147,7 @@ dependencies {
 
     implementation(libs.androidx.compose.ui.test.manifest)
     //noinspection UseTomlInstead
-    implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-alpha03")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-beta01")
 
     // FFmpeg (音视频解析/缩略图/波形) 与 media3 (播放 / 媒体会话系统控制 / 后台播放)
     implementation(libs.dev.ffmpegkit.min)
