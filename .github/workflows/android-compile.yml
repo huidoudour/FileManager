@@ -37,7 +37,7 @@ jobs:
           yes | "$SDKMANAGER" --licenses > /dev/null || true
 
       - name: Enable Gradle cache
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # Compile-only check: compile Kotlin/Java sources for the debug variant
       # without dexing, packaging or signing an APK
