@@ -456,33 +456,48 @@ fun FileListScreen(
                         snackbarHost = { SnackbarHost(snackbarHostState) },
                         topBar = {
                             when {
-                                selectionMode -> SelectionTopBar(
-                                    count = selectedPaths.size,
-                                    singleSelection = selectedPaths.size == 1,
-                                    isFavorite = singleSelected?.let { it.path in favorites } == true,
-                                    isDirectory = singleSelected?.isDirectory == true,
-                                    onClose = { viewModel.clearSelection() },
-                                    onCut = { viewModel.cutToClipboard(viewModel.selectedItems()) },
-                                    onCopy = { viewModel.copyToClipboard(viewModel.selectedItems()) },
-                                    onDelete = { deleteTargets = viewModel.selectedItems() },
-                                    onRename = { renameTarget = viewModel.selectedItems().firstOrNull() },
-                                    onShare = {
-                                        onShareFiles?.invoke(viewModel.selectedItems())
-                                        viewModel.clearSelection()
-                                    },
-                                    onProperties = {
-                                        viewModel.selectedItems().firstOrNull()?.let {
-                                            viewModel.showProperties(it)
+                                selectionMode -> Column(
+                                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                                ) {
+                                    SelectionTopBar(
+                                        count = selectedPaths.size,
+                                        singleSelection = selectedPaths.size == 1,
+                                        isFavorite = singleSelected?.let { it.path in favorites } == true,
+                                        isDirectory = singleSelected?.isDirectory == true,
+                                        onClose = { viewModel.clearSelection() },
+                                        onCut = { viewModel.cutToClipboard(viewModel.selectedItems()) },
+                                        onCopy = { viewModel.copyToClipboard(viewModel.selectedItems()) },
+                                        onDelete = { deleteTargets = viewModel.selectedItems() },
+                                        onRename = { renameTarget = viewModel.selectedItems().firstOrNull() },
+                                        onShare = {
+                                            onShareFiles?.invoke(viewModel.selectedItems())
+                                            viewModel.clearSelection()
+                                        },
+                                        onProperties = {
+                                            viewModel.selectedItems().firstOrNull()?.let {
+                                                viewModel.showProperties(it)
+                                            }
+                                        },
+                                        onToggleFavorite = {
+                                            viewModel.selectedItems().firstOrNull()?.let {
+                                                viewModel.toggleFavorite(it.path)
+                                            }
+                                            viewModel.clearSelection()
+                                        },
+                                        onSelectAll = { viewModel.selectAll() }
+                                    )
+
+                                    // 多选顶栏补上与普通模式相同的面包屑栏,
+                                    // 保持顶部总高度一致, 避免进入多选时列表位置和大小跳变。
+                                    BreadcrumbBar(
+                                        currentPath = currentPath,
+                                        onPathClick = { path ->
+                                            viewModel.closeSearch()
+                                            viewModel.clearSelection()
+                                            viewModel.loadDirectory(path)
                                         }
-                                    },
-                                    onToggleFavorite = {
-                                        viewModel.selectedItems().firstOrNull()?.let {
-                                            viewModel.toggleFavorite(it.path)
-                                        }
-                                        viewModel.clearSelection()
-                                    },
-                                    onSelectAll = { viewModel.selectAll() }
-                                )
+                                    )
+                                }
                                 isSearchActive -> SearchTopBar(
                                     query = searchQuery,
                                     isLoading = isSearchLoading,
