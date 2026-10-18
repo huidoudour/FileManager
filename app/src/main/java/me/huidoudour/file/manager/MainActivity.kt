@@ -20,9 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.core.content.pm.ShortcutInfoCompat
-import androidx.core.content.pm.ShortcutManagerCompat
-import androidx.core.graphics.drawable.IconCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -122,9 +119,6 @@ class MainActivity : ComponentActivity() {
                             shareFiles(files)
                         },
                         onOpenWith = ::openFile,
-                        onCreateShortcut = { path ->
-                            pinShortcut(path)
-                        },
                         onExitApp = {
                             // 主动退出：走统一的退场动画，动画结束后 finish()
                             startExit(ExitStyle.EXIT)
@@ -142,7 +136,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 处理 Intent：文件选取/保存模式，或桌面快捷方式打开指定目录
+     * 处理 Intent：文件选取/保存模式等
      */
     private fun handleIntent(intent: Intent?) {
         intent?.let {
@@ -154,10 +148,6 @@ class MainActivity : ComponentActivity() {
                 Intent.ACTION_OPEN_DOCUMENT, Intent.ACTION_GET_CONTENT, Intent.ACTION_PICK -> {
                     isPickerMode = true
                     viewModel.setPickerMode(true)
-                }
-                ACTION_OPEN_PATH -> {
-                    // 桌面快捷方式：打开指定目录
-                    it.getStringExtra(EXTRA_PATH)?.let { path -> viewModel.loadDirectory(path) }
                 }
                 ACTION_OPEN_PLAYER -> {
                     // 系统媒体通知：回到应用并重新打开音频播放界面
@@ -331,9 +321,6 @@ class MainActivity : ComponentActivity() {
         /** APK 安装器包名 */
         private const val INSTALLER_PACKAGE = "io.github.huidoudour.Installer"
 
-        /** 通过 Intent 打开指定目录的 Action (桌面快捷方式使用) */
-        private const val ACTION_OPEN_PATH = "me.huidoudour.file.manager.action.OPEN_PATH"
-
         /** 点击系统媒体通知重新打开播放界面的 Action (由 AudioPlaybackService 使用) */
         const val ACTION_OPEN_PLAYER = "me.huidoudour.file.manager.action.OPEN_PLAYER"
 
@@ -342,9 +329,6 @@ class MainActivity : ComponentActivity() {
 
         /** 后台播放当前曲目路径的偏好键 (由 AudioPlaybackService 写入) */
         private const val KEY_AUDIO_CURRENT_PATH = "audio_current_path"
-
-        /** 目标目录路径 Extra */
-        private const val EXTRA_PATH = "me.huidoudour.file.manager.extra.PATH"
 
         /** 目录的 MIME 类型 (照搬 MaterialFiles 的 MimeType.DIRECTORY) */
         private const val DIRECTORY_MIME_TYPE = "resource/folder"
@@ -384,26 +368,6 @@ class MainActivity : ComponentActivity() {
                 getString(R.string.share_failed, e.message ?: ""),
                 Toast.LENGTH_SHORT
             ).show()
-        }
-    }
-
-    /**
-     * 为指定目录创建桌面快捷方式 (照搬 MaterialFiles 的 createShortcut)
-     */
-    private fun pinShortcut(path: String) {
-        val shortcut = ShortcutInfoCompat.Builder(this, path)
-            .setShortLabel(File(path).name.ifEmpty { path })
-            .setIntent(
-                Intent(this, MainActivity::class.java).apply {
-                    action = ACTION_OPEN_PATH
-                    putExtra(EXTRA_PATH, path)
-                }
-            )
-            .setIcon(IconCompat.createWithResource(this, R.mipmap.directory_shortcut_icon))
-            .build()
-        ShortcutManagerCompat.requestPinShortcut(this, shortcut, null)
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            Toast.makeText(this, getString(R.string.shortcut_created), Toast.LENGTH_SHORT).show()
         }
     }
 

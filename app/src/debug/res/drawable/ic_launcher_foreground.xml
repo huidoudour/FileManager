@@ -4,26 +4,68 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <group
-        android:pivotX="54"
-        android:pivotY="54"
-        android:scaleX="0.46"
-        android:scaleY="0.46">
+    <!-- 文件夹后板（深海军蓝，含圆角标签页） -->
+    <path
+        android:fillColor="#00497D"
+        android:pathData="M32,33.5
+                          H49
+                          C50,33.5 50.9,33.9 51.7,34.7
+                          L55,37.5
+                          H76
+                          C79.3,37.5 82,40.2 82,43.5
+                          V68
+                          C82,71.3 79.3,74 76,74
+                          H32
+                          C28.7,74 26,71.3 26,68
+                          V39.5
+                          C26,36.2 28.7,33.5 32,33.5
+                          Z" />
 
-        <!-- 文件夹主体（暖金色） -->
-        <path
-            android:fillColor="#2E7D32"
-            android:pathData="M100,36 A4,4 0 0 1 104,40 L104,90 A4,4 0 0 1 100,94 L8,94 A4,4 0 0 1 4,90 L4,40 A4,4 0 0 1 8,36 L20,28 L54,28 L62,36 Z" />
+    <!-- 文档（冰蓝，柔和层次） -->
+    <path
+        android:fillColor="#BBDEFB"
+        android:pathData="M47,26.5
+                          H62.5
+                          L69.5,33.5
+                          V57
+                          H47
+                          Z" />
 
-        <!-- 探出文档（白色半透明） -->
-        <path
-            android:fillColor="#FFFFFF"
-            android:fillAlpha="0.7"
-            android:pathData="M58,52 L76,52 L82,58 L82,76 L58,76 Z" />
+    <!-- 文档折角 -->
+    <path
+        android:fillColor="#90CAF9"
+        android:pathData="M62.5,26.5
+                          V33.5
+                          H69.5
+                          Z" />
 
-    </group>
-    <!-- 右下角小圆圈 -->
+    <!-- 文档内容线 -->
+    <path
+        android:strokeColor="#00497D"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M51.5,37.5
+                          H64" />
+    <path
+        android:strokeColor="#00497D"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M51.5,42.5
+                          H64" />
+
+    <!-- 文件夹前板（主题蓝，圆润底角） -->
+    <path
+        android:fillColor="#0061A4"
+        android:pathData="M26,46
+                          H82
+                          V68
+                          C82,71.3 79.3,74 76,74
+                          H32
+                          C28.7,74 26,71.3 26,68
+                          Z" />
+
+    <!-- Debug 标识（右下角圆点，debug 构建保留） -->
     <path
         android:pathData="M75,82 A4,4 0 1,1 75.01,82 Z"
-        android:fillColor="#4A8F4A"/>
+        android:fillColor="#FF6D00" />
 </vector>

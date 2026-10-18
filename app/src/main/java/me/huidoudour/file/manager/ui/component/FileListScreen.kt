@@ -123,7 +123,6 @@ fun FileListScreen(
     onSaveCancelled: (() -> Unit)? = null,
     onShareFiles: ((List<FileItem>) -> Unit)? = null,
     onOpenWith: ((FileItem) -> Unit)? = null,
-    onCreateShortcut: ((String) -> Unit)? = null,
     onExitApp: (() -> Unit)? = null
 ) {
     val currentPath by viewModel.currentPath.collectAsState()
@@ -558,7 +557,6 @@ fun FileListScreen(
                                         )
                                     },
                                     onCopyPath = { viewModel.copyPathToClipboard(currentPath) },
-                                    onCreateShortcut = { onCreateShortcut?.invoke(currentPath) },
                                     onExitApp = { onExitApp?.invoke() }
                                 )
                             }
@@ -776,7 +774,6 @@ private fun NormalTopBar(
     onToggleBookmark: () -> Unit,
     onShareCurrentDir: () -> Unit,
     onCopyPath: () -> Unit,
-    onCreateShortcut: () -> Unit,
     onExitApp: () -> Unit
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
@@ -955,13 +952,6 @@ private fun NormalTopBar(
                             },
                             onClick = {
                                 onToggleBookmark()
-                                showMoreMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.create_shortcut)) },
-                            onClick = {
-                                onCreateShortcut()
                                 showMoreMenu = false
                             }
                         )

@@ -41,8 +41,6 @@
     <string name="path_copied">已复制路径</string>
     <string name="bookmark_add">收藏当前目录</string>
     <string name="bookmark_remove">取消收藏当前目录</string>
-    <string name="create_shortcut">创建快捷方式</string>
-    <string name="shortcut_created">快捷方式已创建</string>
     <string name="exit_app">退出应用</string>
 
     <!-- 顶栏副标题统计 -->
