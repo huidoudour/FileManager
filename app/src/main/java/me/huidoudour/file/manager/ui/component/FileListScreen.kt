@@ -78,6 +78,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -128,6 +129,7 @@ fun FileListScreen(
     val currentPath by viewModel.currentPath.collectAsState()
     val files by viewModel.files.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val sortMode by viewModel.sortMode.collectAsState()
     val sortAscending by viewModel.sortAscending.collectAsState()
@@ -616,34 +618,38 @@ fun FileListScreen(
                             }
                         }
                     ) { innerPadding ->
-                        Box(
+                        PullToRefreshBox(
+                            isRefreshing = isRefreshing,
+                            onRefresh = { viewModel.refresh() },
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(innerPadding)
                         ) {
                             when {
                                 isLoading && !searching && displayedFiles.isEmpty() -> {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.align(Alignment.Center)
-                                    )
+                                    RefreshableCenter {
+                                        CircularProgressIndicator()
+                                    }
                                 }
                                 searching && displayedFiles.isEmpty() -> {
                                     if (isSearchLoading) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.align(Alignment.Center)
-                                        )
+                                        RefreshableCenter {
+                                            CircularProgressIndicator()
+                                        }
                                     } else {
-                                        EmptyPlaceholder(
-                                            text = stringResource(R.string.no_search_results),
-                                            modifier = Modifier.align(Alignment.Center)
-                                        )
+                                        RefreshableCenter {
+                                            EmptyPlaceholder(
+                                                text = stringResource(R.string.no_search_results)
+                                            )
+                                        }
                                     }
                                 }
                                 displayedFiles.isEmpty() && errorMessage == null -> {
-                                    EmptyPlaceholder(
-                                        text = stringResource(R.string.dir_empty),
-                                        modifier = Modifier.align(Alignment.Center)
-                                    )
+                                    RefreshableCenter {
+                                        EmptyPlaceholder(
+                                            text = stringResource(R.string.dir_empty)
+                                        )
+                                    }
                                 }
                                 else -> {
                                     LazyColumn(
@@ -1453,6 +1459,18 @@ private fun PasteBar(
 // =============================================================================
 //  空列表占位 (照搬 MaterialFiles 的 empty view: 240dp 大图标 + 文案)
 // =============================================================================
+@Composable
+private fun RefreshableCenter(content: @Composable () -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        item {
+            Box(
+                modifier = Modifier.fillParentMaxSize(),
+                contentAlignment = Alignment.Center
+            ) { content() }
+        }
+    }
+}
+
 @Composable
 private fun EmptyPlaceholder(text: String, modifier: Modifier = Modifier) {
     Column(

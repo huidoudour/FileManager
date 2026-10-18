@@ -24,6 +24,7 @@ import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
 import me.huidoudour.file.manager.util.FileOperationUtil
 import me.huidoudour.file.manager.util.FileSortUtil
+import me.huidoudour.file.manager.util.NaturalOrderComparator
 import me.huidoudour.file.manager.util.SortMode
 import java.io.File
 import java.text.SimpleDateFormat
@@ -107,6 +108,10 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    /** 下拉刷新专用状态 (目录导航不会触发刷新指示器) */
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -366,15 +371,22 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 _files.value = emptyList()
             } finally {
                 _isLoading.value = false
+                _isRefreshing.value = false
             }
         }
     }
 
     /**
-     * 刷新当前目录
+     * 下拉刷新: 目录列表重新加载; 搜索状态下重新执行当前搜索
      */
     fun refresh() {
-        loadDirectory(_currentPath.value)
+        _isRefreshing.value = true
+        val query = _searchQuery.value
+        if (_isSearchActive.value && query.isNotBlank()) {
+            setSearchQuery(query)
+        } else {
+            loadDirectory(_currentPath.value)
+        }
     }
 
     /**
@@ -779,6 +791,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         _searchQuery.value = ""
         _searchResults.value = emptyList()
         _isSearchLoading.value = false
+        _isRefreshing.value = false
     }
 
     fun setSearchQuery(query: String) {
@@ -787,6 +800,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         if (query.isBlank()) {
             _searchResults.value = emptyList()
             _isSearchLoading.value = false
+            _isRefreshing.value = false
             return
         }
         searchJob = viewModelScope.launch(Dispatchers.IO) {
@@ -812,7 +826,10 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             _searchResults.value = FileSortUtil.sort(
                 results, _sortMode.value, _sortAscending.value, _sortDirectoriesFirst.value
             )
-            if (isActive) _isSearchLoading.value = false
+            if (isActive) {
+                _isSearchLoading.value = false
+                _isRefreshing.value = false
+            }
         }
     }
 
@@ -823,7 +840,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     private fun loadFavorites(): List<String> =
         prefs.getStringSet(KEY_FAVORITES, emptySet())
             .orEmpty()
-            .sortedBy { File(it).name.lowercase() }
+            .sortedWith(compareBy(NaturalOrderComparator) { File(it).name })
 
     fun isFavorite(path: String): Boolean = path in _favorites.value
 
@@ -832,7 +849,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         val added = current.add(path)
         if (!added) current.remove(path)
         prefs.edit { putStringSet(KEY_FAVORITES, current) }
-        _favorites.value = current.sortedBy { File(it).name.lowercase() }
+        _favorites.value = current.sortedWith(compareBy(NaturalOrderComparator) { File(it).name })
         if (added) _toastMessage.value = str(R.string.favorite_added)
     }
 

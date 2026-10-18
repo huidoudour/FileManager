@@ -4,6 +4,13 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
+    <!-- 整体缩放至 0.8，让图标在自适应安全区内显得更小巧 -->
+    <group
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:pivotX="54"
+        android:pivotY="54">
+
     <!-- 文件夹后板（深海军蓝，含圆角标签页） -->
     <path
         android:fillColor="#00497D"
@@ -42,13 +49,13 @@
     <!-- 文档内容线 -->
     <path
         android:strokeColor="#00497D"
-        android:strokeWidth="2"
+        android:strokeWidth="2.4"
         android:strokeLineCap="round"
         android:pathData="M51.5,37.5
                           H64" />
     <path
         android:strokeColor="#00497D"
-        android:strokeWidth="2"
+        android:strokeWidth="2.4"
         android:strokeLineCap="round"
         android:pathData="M51.5,42.5
                           H64" />
@@ -64,7 +71,9 @@
                           C28.7,74 26,71.3 26,68
                           Z" />
 
-    <!-- Debug 标识（右下角圆点，debug 构建保留） -->
+    </group>
+
+    <!-- Debug 标识（右下角圆点，debug 构建保留，不随图标缩放） -->
     <path
         android:pathData="M75,82 A4,4 0 1,1 75.01,82 Z"
         android:fillColor="#FF6D00" />

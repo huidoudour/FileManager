@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.LruCache
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
@@ -38,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,7 +88,7 @@ import java.io.File
 //  - 行高 72dp, 左侧 48dp 图标触摸区, 右侧 48dp 三点菜单按钮
 //  - 图标: 彩色矢量图标 + 圆形淡色底 (按文件类型显示对应图标)
 //  - 图片/视频显示圆角缩略图; 单 APK 识别成功后显示其应用图标
-//  - 选中时图标右下角显示圆形对勾徽章
+//  - 选中时整条显示圆角边框 + 淡色底
 // =============================================================================
 
 /** 单条文件的长按/菜单操作 */
@@ -204,6 +205,10 @@ fun FileItemRow(
     val icon = fileIcon(category)
     val tint = iconTint(category)
     val interactionSource = remember { MutableInteractionSource() }
+    // 图标水波纹半径固定为 20dp, 与 40dp 图标圆一致 (外层 48dp 仅用于扩大触摸区)
+    val iconRipple = remember { ripple(radius = 20.dp) }
+    // 选中态: 整条圆角边框 + 淡色底, 比右下角对勾更醒目
+    val selectionShape = RoundedCornerShape(12.dp)
 
     // APK 应用图标: 单 APK 识别成功后显示 (跟随缩略图开关)
     val isApk = category == FileCategory.APK
@@ -218,7 +223,18 @@ fun FileItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp)
             .heightIn(min = 72.dp)
+            .then(
+                if (isChecked) {
+                    Modifier
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), selectionShape)
+                        .border(2.dp, MaterialTheme.colorScheme.primary, selectionShape)
+                } else {
+                    Modifier
+                }
+            )
+            .clip(selectionShape)
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
@@ -235,7 +251,7 @@ fun FileItemRow(
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
-                    indication = LocalIndication.current,
+                    indication = iconRipple,
                     onClick = onIconClick
                 ),
             contentAlignment = Alignment.Center
@@ -286,25 +302,6 @@ fun FileItemRow(
                             tint = tint
                         )
                     }
-                }
-            }
-
-            // 选中徽章: 右下角 18dp 圆形对勾 (primary 底 + onPrimary 勾)
-            if (isChecked) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Check,
-                        contentDescription = null,
-                        modifier = Modifier.size(12.dp),
-                        tint = MaterialTheme.colorScheme.onPrimary
-                    )
                 }
             }
         }
