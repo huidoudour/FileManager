@@ -29,6 +29,8 @@ val appVersionName = "${baseVersionName}.${gitCommitCount()}.${gitHash()}"
 
 android {
     namespace = "me.huidoudour.file.manager"
+    // 使用本机已安装的 NDK, 否则 stripDebugDebugSymbols 找不到默认版本会跳过符号剥离
+    ndkVersion = "30.0.16248370"
     compileSdk {
         version = release(37) {
             minorApiLevel = 2
@@ -93,6 +95,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     lint {
         warningsAsErrors = false
@@ -154,4 +157,9 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.session)
+
+    // ACRA (Apache-2.0): 捕获 Java 未处理异常并落盘崩溃报告, 供应用内查看/分享
+    implementation(libs.acra.core)
+    // xCrash (MIT): 捕获 Native 崩溃与 ANR, 补充 ACRA 无法覆盖的原生异常
+    implementation(libs.xcrash.android.lib)
 }

@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewSidebar
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Image
@@ -33,16 +34,21 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.huidoudour.file.manager.R
+import me.huidoudour.file.manager.util.CrashLogStore
 import me.huidoudour.file.manager.viewmodel.ThemeMode
 import java.io.File
 
@@ -74,6 +80,16 @@ fun SettingsScreen(
     val quickDirs = remember { buildAllQuickDirs() }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showSidebarDialog by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    var crashLogs by remember { mutableStateOf<List<CrashLogStore.CrashLog>>(emptyList()) }
+    var showCrashLogsDialog by remember { mutableStateOf(false) }
+    var selectedCrashLog by remember { mutableStateOf<CrashLogStore.CrashLog?>(null) }
+
+    // 读取崩溃日志涉及磁盘 I/O，放到后台线程避免阻塞设置页打开
+    LaunchedEffect(Unit) {
+        crashLogs = withContext(Dispatchers.IO) { CrashLogStore.list(context) }
+    }
 
     Scaffold(
         topBar = {
@@ -258,6 +274,53 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 color = MaterialTheme.colorScheme.outlineVariant
             )
+
+            // ---- 诊断 ----
+            SectionHeader(R.string.settings_section_diagnostics)
+
+            // 崩溃日志入口：展示数量，点击打开日志列表
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        showCrashLogsDialog = true
+                    }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.BugReport,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.crash_logs_title),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (crashLogs.isEmpty()) {
+                            stringResource(R.string.crash_none)
+                        } else {
+                            stringResource(R.string.crash_settings_desc_count, crashLogs.size)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
             Spacer(modifier = Modifier.padding(bottom = 16.dp))
         }
 
@@ -278,6 +341,41 @@ fun SettingsScreen(
                 hiddenQuickDirs = hiddenQuickDirs,
                 onToggleQuickDir = onToggleQuickDir,
                 onDismiss = { showSidebarDialog = false }
+            )
+        }
+
+        if (showCrashLogsDialog) {
+            CrashLogListDialog(
+                logs = crashLogs,
+                onSelect = { selectedCrashLog = it },
+                onDelete = { log ->
+                    if (CrashLogStore.delete(log)) {
+                        crashLogs = crashLogs.filterNot {
+                            it.file.absolutePath == log.file.absolutePath
+                        }
+                    }
+                },
+                onClearAll = {
+                    CrashLogStore.clear(context)
+                    crashLogs = emptyList()
+                    showCrashLogsDialog = false
+                },
+                onDismiss = { showCrashLogsDialog = false }
+            )
+        }
+
+        selectedCrashLog?.let { log ->
+            CrashReportDialog(
+                log = log,
+                onDelete = {
+                    if (CrashLogStore.delete(log)) {
+                        crashLogs = crashLogs.filterNot {
+                            it.file.absolutePath == log.file.absolutePath
+                        }
+                    }
+                    selectedCrashLog = null
+                },
+                onDismiss = { selectedCrashLog = null }
             )
         }
     }

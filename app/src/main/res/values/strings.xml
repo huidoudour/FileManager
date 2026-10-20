@@ -241,4 +241,24 @@
     <string name="audio_mode_play_once">单曲播放</string>
     <string name="audio_details">信息</string>
     <string name="audio_details_collapse">收起信息</string>
+
+    <!-- 崩溃日志 (ACRA) -->
+    <string name="settings_section_diagnostics">诊断</string>
+    <string name="crash_logs_title">崩溃日志</string>
+    <string name="crash_dialog_title">应用已崩溃</string>
+    <string name="crash_detail_title">崩溃详情</string>
+    <string name="crash_dialog_message">应用上次运行时发生了异常，崩溃信息已保存。你可以分享或删除这条记录。</string>
+    <string name="crash_none">暂无崩溃记录</string>
+    <string name="crash_settings_desc_count">最近 %1$d 条崩溃记录</string>
+    <string name="crash_info_time">时间</string>
+    <string name="crash_info_version">版本</string>
+    <string name="crash_info_device">设备</string>
+    <string name="crash_info_source">来源</string>
+    <string name="crash_source_acra">Java 崩溃 (ACRA)</string>
+    <string name="crash_source_xcrash">Native / ANR (xCrash)</string>
+    <string name="crash_info_stack">堆栈信息</string>
+    <string name="crash_clear_all">清空全部</string>
+    <string name="crash_share_subject">File Manager 崩溃报告</string>
+    <string name="crash_share_chooser">分享崩溃报告</string>
+    <string name="crash_share_failed">分享失败: %1$s</string>
 </resources>

@@ -14,21 +14,27 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.huidoudour.file.manager.model.FileItem
 import me.huidoudour.file.manager.ui.anim.ExitStyle
 import me.huidoudour.file.manager.ui.anim.ExitTransitionHost
+import me.huidoudour.file.manager.ui.component.CrashReportDialog
 import me.huidoudour.file.manager.ui.component.FileListScreen
 import me.huidoudour.file.manager.ui.theme.FileManagerTheme
+import me.huidoudour.file.manager.util.CrashLogStore
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import me.huidoudour.file.manager.viewmodel.ThemeMode
 import java.io.File
@@ -50,6 +56,12 @@ class MainActivity : ComponentActivity() {
      * 由 FileListScreen 消费后清空。
      */
     private var openPlayerRequest by mutableStateOf<FileItem?>(null)
+
+    /**
+     * 上次运行产生的、尚未提示过的崩溃报告。
+     * 在 setContent 中异步读取 ACRA 写入的日志文件，避免阻塞启动。
+     */
+    private var pendingCrashReport by mutableStateOf<CrashLogStore.CrashLog?>(null)
 
     // 权限请求 launcher
     private val requestPermissionLauncher =
@@ -123,6 +135,27 @@ class MainActivity : ComponentActivity() {
                             // 主动退出：走统一的退场动画，动画结束后 finish()
                             startExit(ExitStyle.EXIT)
                         }
+                    )
+                }
+
+                // 启动时异步读取最近一次未提示的崩溃报告 (ACRA 在崩溃时落盘)
+                LaunchedEffect(Unit) {
+                    // 被其他应用调起选取/保存文件时不打断调用方
+                    if (isPickerMode || isSaveMode) return@LaunchedEffect
+                    pendingCrashReport = withContext(Dispatchers.IO) {
+                        CrashLogStore.latestUnseen(this@MainActivity)
+                    }
+                }
+                pendingCrashReport?.let { log ->
+                    CrashReportDialog(
+                        log = log,
+                        titleRes = R.string.crash_dialog_title,
+                        showIntro = true,
+                        onDelete = {
+                            CrashLogStore.delete(log)
+                            pendingCrashReport = null
+                        },
+                        onDismiss = { pendingCrashReport = null }
                     )
                 }
             }
