@@ -82,6 +82,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -173,6 +174,23 @@ fun FileListScreen(
     val selectionMode = selectedPaths.isNotEmpty()
     val searching = isSearchActive && searchQuery.isNotBlank()
     val displayedFiles = if (searching) searchResults else files
+
+    // 目录切换动画的退场快照：保存最近浏览目录的条目列表，
+    // 过渡期间旧页面仍渲染自己的内容，避免新旧页面显示同一份列表。
+    val directorySnapshots = remember { linkedMapOf<String, List<FileItem>>() }
+    var lastSnapshotPath by remember { mutableStateOf(currentPath) }
+    SideEffect {
+        directorySnapshots[currentPath] = displayedFiles
+        if (lastSnapshotPath != currentPath) {
+            while (directorySnapshots.size > DIRECTORY_SNAPSHOT_LIMIT) {
+                val removable = directorySnapshots.keys.firstOrNull {
+                    it != currentPath && it != lastSnapshotPath
+                } ?: break
+                directorySnapshots.remove(removable)
+            }
+            lastSnapshotPath = currentPath
+        }
+    }
 
     val internalStorageLabel = stringResource(R.string.internal_storage)
 
@@ -625,122 +643,171 @@ fun FileListScreen(
                                 .fillMaxSize()
                                 .padding(innerPadding)
                         ) {
-                            when {
-                                isLoading && !searching && displayedFiles.isEmpty() -> {
-                                    RefreshableCenter {
-                                        CircularProgressIndicator()
-                                    }
+
+                            // 目录切换动画：以 currentPath 作为目标状态，
+                            // 进入子目录时新列表从右滑入，返回上级 / 后退时从左滑入。
+                            AnimatedContent(
+                                targetState = currentPath,
+                                transitionSpec = {
+                                    // 目标路径是原路径的后代 → 进入子目录（向前）；
+                                    // 反之则是返回上级 / 历史后退（向后）。
+                                    val enteringChild = isDescendantPath(targetState, initialState)
+                                    (
+                                        slideInHorizontally(
+                                            animationSpec = tween(
+                                                durationMillis = 300,
+                                                easing = LinearOutSlowInEasing
+                                            ),
+                                            initialOffsetX = { fullWidth ->
+                                                if (enteringChild) fullWidth else -fullWidth
+                                            }
+                                        ) +
+                                        fadeIn(
+                                            animationSpec = tween(durationMillis = 300, delayMillis = 50)
+                                        )
+                                    ) togetherWith (
+                                        slideOutHorizontally(
+                                            animationSpec = tween(
+                                                durationMillis = 300,
+                                                easing = FastOutSlowInEasing
+                                            ),
+                                            targetOffsetX = { fullWidth ->
+                                                if (enteringChild) -fullWidth / 3 else fullWidth / 3
+                                            }
+                                        ) +
+                                        fadeOut(animationSpec = tween(durationMillis = 220))
+                                    )
+                                },
+                                modifier = Modifier.fillMaxSize(),
+                                label = "directoryNavigation"
+                            ) { pagePath ->
+                                // 退场页面沿用该目录自己的条目快照，
+                                // 避免过渡期间新旧页面都显示新目录的列表。
+                                val pageFiles = if (pagePath == currentPath) {
+                                    displayedFiles
+                                } else {
+                                    directorySnapshots[pagePath].orEmpty()
                                 }
-                                searching && displayedFiles.isEmpty() -> {
-                                    if (isSearchLoading) {
+                                val pageIsCurrent = pagePath == currentPath
+                                val pageSearching = searching && pageIsCurrent
+
+                                when {
+                                    pageIsCurrent && isLoading && !pageSearching && pageFiles.isEmpty() -> {
                                         RefreshableCenter {
                                             CircularProgressIndicator()
                                         }
-                                    } else {
+                                    }
+                                    pageSearching && pageFiles.isEmpty() -> {
+                                        if (isSearchLoading) {
+                                            RefreshableCenter {
+                                                CircularProgressIndicator()
+                                            }
+                                        } else {
+                                            RefreshableCenter {
+                                                EmptyPlaceholder(
+                                                    text = stringResource(R.string.no_search_results)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    pageFiles.isEmpty() && errorMessage == null -> {
                                         RefreshableCenter {
                                             EmptyPlaceholder(
-                                                text = stringResource(R.string.no_search_results)
+                                                text = stringResource(R.string.dir_empty)
                                             )
                                         }
                                     }
-                                }
-                                displayedFiles.isEmpty() && errorMessage == null -> {
-                                    RefreshableCenter {
-                                        EmptyPlaceholder(
-                                            text = stringResource(R.string.dir_empty)
-                                        )
-                                    }
-                                }
-                                else -> {
-                                    LazyColumn(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentPadding = PaddingValues(
-                                            top = 4.dp,
-                                            bottom = if (fabVisible) 88.dp else 8.dp
-                                        )
-                                    ) {
-                                        items(
-                                            items = displayedFiles,
-                                            key = { it.path }
-                                        ) { fileItem ->
-                                            FileItemRow(
-                                                fileItem = fileItem,
-                                                viewModel = viewModel,
-                                                isChecked = fileItem.path in selectedPaths,
-                                                isFavorite = fileItem.path in favorites,
-                                                isMenuShown = actionTarget?.path == fileItem.path,
-                                                showThumbnails = showThumbnails,
-                                                onItemClick = {
-                                                    when {
-                                                        selectionMode ->
-                                                            viewModel.toggleSelection(fileItem)
-                                                        fileItem.isDirectory -> {
-                                                            if (searching) viewModel.closeSearch()
-                                                            viewModel.navigateToDirectory(fileItem)
-                                                        }
-                                                        else -> {
-                                                            val category = FileTypeUtil.getCategory(fileItem)
-                                                            when {
-                                                                // 图片文件: 打开内置图片预览 (全屏查看器)
-                                                                !pickerMode && !saveMode &&
-                                                                    category == FileCategory.IMAGE ->
-                                                                    previewTarget = fileItem
+                                    else -> {
+                                        LazyColumn(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentPadding = PaddingValues(
+                                                top = 4.dp,
+                                                bottom = if (fabVisible) 88.dp else 8.dp
+                                            )
+                                        ) {
+                                            items(
+                                                items = pageFiles,
+                                                key = { it.path }
+                                            ) { fileItem ->
+                                                FileItemRow(
+                                                    fileItem = fileItem,
+                                                    viewModel = viewModel,
+                                                    isChecked = fileItem.path in selectedPaths,
+                                                    isFavorite = fileItem.path in favorites,
+                                                    isMenuShown = actionTarget?.path == fileItem.path,
+                                                    showThumbnails = showThumbnails,
+                                                    onItemClick = {
+                                                        when {
+                                                            selectionMode ->
+                                                                viewModel.toggleSelection(fileItem)
+                                                            fileItem.isDirectory -> {
+                                                                if (searching) viewModel.closeSearch()
+                                                                viewModel.navigateToDirectory(fileItem)
+                                                            }
+                                                            else -> {
+                                                                val category = FileTypeUtil.getCategory(fileItem)
+                                                                when {
+                                                                    // 图片文件: 打开内置图片预览 (全屏查看器)
+                                                                    !pickerMode && !saveMode &&
+                                                                        category == FileCategory.IMAGE ->
+                                                                        previewTarget = fileItem
 
-                                                                // 音视频文件: 打开内置预览 (解析信息/缩略图/波形 + 播放)
-                                                                !pickerMode && !saveMode && MediaProbe.isSupported &&
-                                                                    (category == FileCategory.VIDEO || category == FileCategory.AUDIO) ->
-                                                                    previewTarget = fileItem
+                                                                    // 音视频文件: 打开内置预览 (解析信息/缩略图/波形 + 播放)
+                                                                    !pickerMode && !saveMode && MediaProbe.isSupported &&
+                                                                        (category == FileCategory.VIDEO || category == FileCategory.AUDIO) ->
+                                                                        previewTarget = fileItem
 
-                                                                else -> onFileSelected?.invoke(fileItem)
+                                                                    else -> onFileSelected?.invoke(fileItem)
+                                                                }
                                                             }
                                                         }
-                                                    }
-                                                },
-                                                onIconClick = if (pickerMode || saveMode) {
-                                                    {}
-                                                } else {
-                                                    { viewModel.toggleSelection(fileItem) }
-                                                },
-                                                onItemLongClick = if (pickerMode || saveMode) null else ({
-                                                    if (selectionMode) {
-                                                        if (fileItem.isDirectory) {
-                                                            if (searching) viewModel.closeSearch()
-                                                            viewModel.navigateToDirectory(fileItem)
-                                                        } else {
-                                                            onFileSelected?.invoke(fileItem)
-                                                        }
+                                                    },
+                                                    onIconClick = if (pickerMode || saveMode) {
+                                                        {}
                                                     } else {
-                                                        viewModel.toggleSelection(fileItem)
-                                                    }
-                                                }),
-                                                onMenuClick = { actionTarget = fileItem },
-                                                onMenuDismiss = { actionTarget = null },
-                                                onAction = { action ->
-                                                    when (action) {
-                                                        FileAction.COPY ->
-                                                            viewModel.copyToClipboard(listOf(fileItem))
-                                                        FileAction.CUT ->
-                                                            viewModel.cutToClipboard(listOf(fileItem))
-                                                        FileAction.DELETE ->
-                                                            deleteTargets = listOf(fileItem)
-                                                        FileAction.RENAME ->
-                                                            renameTarget = fileItem
-                                                        FileAction.SHARE ->
-                                                            onShareFiles?.invoke(listOf(fileItem))
-                                                        FileAction.FAVORITE ->
-                                                            viewModel.toggleFavorite(fileItem.path)
-                                                        FileAction.PIN_SIZE ->
-                                                            viewModel.togglePinFolder(fileItem.path)
-                                                        FileAction.REFRESH_SIZE ->
-                                                            viewModel.refreshFolderSize(fileItem.path)
-                                                        FileAction.PROPERTIES ->
-                                                            viewModel.showProperties(fileItem)
-                                                        FileAction.MULTI_SELECT ->
+                                                        { viewModel.toggleSelection(fileItem) }
+                                                    },
+                                                    onItemLongClick = if (pickerMode || saveMode) null else ({
+                                                        if (selectionMode) {
+                                                            if (fileItem.isDirectory) {
+                                                                if (searching) viewModel.closeSearch()
+                                                                viewModel.navigateToDirectory(fileItem)
+                                                            } else {
+                                                                onFileSelected?.invoke(fileItem)
+                                                            }
+                                                        } else {
                                                             viewModel.toggleSelection(fileItem)
+                                                        }
+                                                    }),
+                                                    onMenuClick = { actionTarget = fileItem },
+                                                    onMenuDismiss = { actionTarget = null },
+                                                    onAction = { action ->
+                                                        when (action) {
+                                                            FileAction.COPY ->
+                                                                viewModel.copyToClipboard(listOf(fileItem))
+                                                            FileAction.CUT ->
+                                                                viewModel.cutToClipboard(listOf(fileItem))
+                                                            FileAction.DELETE ->
+                                                                deleteTargets = listOf(fileItem)
+                                                            FileAction.RENAME ->
+                                                                renameTarget = fileItem
+                                                            FileAction.SHARE ->
+                                                                onShareFiles?.invoke(listOf(fileItem))
+                                                            FileAction.FAVORITE ->
+                                                                viewModel.toggleFavorite(fileItem.path)
+                                                            FileAction.PIN_SIZE ->
+                                                                viewModel.togglePinFolder(fileItem.path)
+                                                            FileAction.REFRESH_SIZE ->
+                                                                viewModel.refreshFolderSize(fileItem.path)
+                                                            FileAction.PROPERTIES ->
+                                                                viewModel.showProperties(fileItem)
+                                                            FileAction.MULTI_SELECT ->
+                                                                viewModel.toggleSelection(fileItem)
+                                                        }
+                                                        actionTarget = null
                                                     }
-                                                    actionTarget = null
-                                                }
-                                            )
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -751,6 +818,16 @@ fun FileListScreen(
             }
         }
     }
+}
+
+/** 目录切换快照最多保留的目录数量，避免长时间浏览后快照无限增长。 */
+private const val DIRECTORY_SNAPSHOT_LIMIT = 12
+
+/** 判断 [path] 是否位于 [ancestor] 目录内部（路径相等时返回 false）。 */
+private fun isDescendantPath(path: String, ancestor: String): Boolean {
+    if (path == ancestor) return false
+    val prefix = if (ancestor.endsWith('/')) ancestor else "$ancestor/"
+    return path.startsWith(prefix)
 }
 
 // =============================================================================
