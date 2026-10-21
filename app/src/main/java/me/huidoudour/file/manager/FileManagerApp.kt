@@ -43,8 +43,9 @@ class FileManagerApp : Application() {
     /**
      * xCrash 负责 Native 崩溃与 ANR，Java 崩溃交给 ACRA，避免同一异常落两份报告。
      *
-     * 初始化失败（例如 16KB page size 设备无法加载 4KB 对齐的 libxcrash.so）只返回错误码，
+     * 初始化失败（例如 16KB page size 设备无法加载未对齐的 native 库）只返回错误码，
      * 不会影响应用本身运行，只是缺少 Native/ANR 捕获能力。
+     * 本地自编译的 xcrash-android-lib.aar 已按 16KB 对齐（app/deps），正常情况下不会再走这条分支。
      */
     private fun initXCrash() {
         val result = XCrash.init(

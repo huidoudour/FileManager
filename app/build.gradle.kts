@@ -161,5 +161,6 @@ dependencies {
     // ACRA (Apache-2.0): 捕获 Java 未处理异常并落盘崩溃报告, 供应用内查看/分享
     implementation(libs.acra.core)
     // xCrash (MIT): 捕获 Native 崩溃与 ANR, 补充 ACRA 无法覆盖的原生异常
-    implementation(libs.xcrash.android.lib)
+    // 本地自编译 AAR (NDK r30, LOAD 段 16KB 对齐), 替代 Maven 上 4KB 对齐的 3.1.0, 满足 Android 15+ 16KB page size 要求
+    implementation(files("deps/xcrash-android-lib.aar"))
 }
