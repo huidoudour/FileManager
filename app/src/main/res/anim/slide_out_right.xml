@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    返回调用方时，本界面整体向右滑出屏幕（标准返回手势的横向位移）。
+-->
+<translate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="@android:integer/config_mediumAnimTime"
+    android:fromXDelta="0%"
+    android:interpolator="@android:interpolator/accelerate_quint"
+    android:toXDelta="100%" />

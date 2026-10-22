@@ -29,8 +29,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.huidoudour.file.manager.model.FileItem
-import me.huidoudour.file.manager.ui.anim.ExitStyle
-import me.huidoudour.file.manager.ui.anim.ExitTransitionHost
 import me.huidoudour.file.manager.ui.component.CrashReportDialog
 import me.huidoudour.file.manager.ui.component.FileListScreen
 import me.huidoudour.file.manager.ui.theme.FileManagerTheme
@@ -44,12 +42,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var viewModel: FileManagerViewModel
     private var isPickerMode = false
     private var isSaveMode = false
-
-    /**
-     * 退出过渡动画状态。为 null 表示当前未在退出；
-     * 一旦被赋值，界面会播放退场动画，动画结束后才真正 finish()。
-     */
-    private var exitStyle by mutableStateOf<ExitStyle?>(null)
 
     /**
      * 待打开的音频播放界面请求 (点击系统媒体通知回到应用时设置)；
@@ -96,47 +88,39 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.DARK -> true
             }
             FileManagerTheme(darkTheme = darkTheme) {
-                // 退出过渡动画：
-                //  - 点击"取消 / 选取文件完成 / 保存完成"等主动退出 → 播放自定义淡出动画
-                //  - 返回手势→ 根目录时不再拦截返回，交给系统播放预测性返回动画（随手指缩放）
-                ExitTransitionHost(
-                    exitStyle = exitStyle,
-                    onExitFinished = { finishAfterExitAnimation() }
-                ) {
-                    FileListScreen(
-                        viewModel = viewModel,
-                        openPlayerRequest = openPlayerRequest,
-                        onOpenPlayerRequestConsumed = { openPlayerRequest = null },
-                        onFileSelected = { file ->
-                            if (isPickerMode) {
-                                returnFileToCaller(file)
-                            } else {
-                                // 非选取模式点击文件：尝试用其他 App 打开
-                                openFile(file)
-                            }
-                        },
-                        onPickCancelled = {
-                            setResult(RESULT_CANCELED)
-                            startExit(ExitStyle.CANCEL)
-                        },
-                        onSaveConfirmed = {
-                            performFileSave()
-                        },
-                        onSaveCancelled = {
-                            viewModel.clearSaveData()
-                            setResult(RESULT_CANCELED)
-                            startExit(ExitStyle.CANCEL)
-                        },
-                        onShareFiles = { files ->
-                            shareFiles(files)
-                        },
-                        onOpenWith = ::openFile,
-                        onExitApp = {
-                            // 主动退出：走统一的退场动画，动画结束后 finish()
-                            startExit(ExitStyle.EXIT)
+                FileListScreen(
+                    viewModel = viewModel,
+                    openPlayerRequest = openPlayerRequest,
+                    onOpenPlayerRequestConsumed = { openPlayerRequest = null },
+                    onFileSelected = { file ->
+                        if (isPickerMode) {
+                            returnFileToCaller(file)
+                        } else {
+                            // 非选取模式点击文件：尝试用其他 App 打开
+                            openFile(file)
                         }
-                    )
-                }
+                    },
+                    onPickCancelled = {
+                        setResult(RESULT_CANCELED)
+                        finishWithSlideBack()
+                    },
+                    onSaveConfirmed = {
+                        performFileSave()
+                    },
+                    onSaveCancelled = {
+                        viewModel.clearSaveData()
+                        setResult(RESULT_CANCELED)
+                        finishWithSlideBack()
+                    },
+                    onShareFiles = { files ->
+                        shareFiles(files)
+                    },
+                    onOpenWith = ::openFile,
+                    onExitApp = {
+                        // 主动退出：与返回调用方一致，整体向右滑出
+                        finishWithSlideBack()
+                    }
+                )
 
                 // 启动时异步读取最近一次未提示的崩溃报告 (ACRA 在崩溃时落盘)
                 LaunchedEffect(Unit) {
@@ -254,7 +238,7 @@ class MainActivity : ComponentActivity() {
         if (uris.isEmpty() && textContent.isNullOrBlank()) {
             Toast.makeText(this, getString(R.string.save_failed, "未接收到可保存的内容"), Toast.LENGTH_SHORT).show()
             setResult(RESULT_CANCELED)
-            startExit(ExitStyle.CANCEL)
+            finishWithSlideBack()
             return
         }
 
@@ -286,10 +270,10 @@ class MainActivity : ComponentActivity() {
                 }
                 setResult(RESULT_OK, resultIntent)
             }
-            startExit(ExitStyle.RETURN_RESULT)
+            finishWithSlideBack()
         } else {
             setResult(RESULT_CANCELED)
-            startExit(ExitStyle.CANCEL)
+            finishWithSlideBack()
         }
     }
 
@@ -309,7 +293,7 @@ class MainActivity : ComponentActivity() {
                     Toast.LENGTH_SHORT
                 ).show()
                 setResult(RESULT_OK)
-                startExit(ExitStyle.RETURN_RESULT)
+                finishWithSlideBack()
             } else {
                 Toast.makeText(
                     this@MainActivity,
@@ -317,37 +301,32 @@ class MainActivity : ComponentActivity() {
                     Toast.LENGTH_SHORT
                 ).show()
                 setResult(RESULT_CANCELED)
-                startExit(ExitStyle.CANCEL)
+                finishWithSlideBack()
             }
         }
     }
 
     /**
-     * 触发退出过渡动画。
+     * 以"从左往右滑动"的返回动画关闭当前界面。
      *
-     * 这里只负责切换状态，真正的 `finish()` 会在动画播放结束后由
-     * [finishAfterExitAnimation] 执行。重复调用会被忽略，避免动画被打断或重复播放。
+     * 关闭时让本界面整体向右滑出屏幕、调用方界面从左侧滑入，
+     * 也就是系统标准的 Activity 返回转场（不再使用自定义缩放/淡出）。
      */
-    private fun startExit(style: ExitStyle) {
-        if (exitStyle != null) return
-        exitStyle = style
-    }
-
-    /**
-     * 退出动画播放完毕后的收尾工作：关闭当前 Activity。
-     *
-     * 关闭的同时给窗口本身加一段淡出转场，让调用方的界面从下方柔和地浮现出来，
-     * 而不是等界面内容淡出后窗口突然消失（否则会出现"闪一下底色"的观感）。
-     */
-    private fun finishAfterExitAnimation() {
+    private fun finishWithSlideBack() {
+        if (isFinishing) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             // Android 14+ 使用新的窗口动画 API
-            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, R.anim.window_exit_fade)
+            overrideActivityTransition(
+                OVERRIDE_TRANSITION_CLOSE,
+                R.anim.slide_in_left,
+                R.anim.slide_out_right
+            )
+            finish()
         } else {
+            finish()
             @Suppress("DEPRECATION")
-            overridePendingTransition(0, R.anim.window_exit_fade)
+            overridePendingTransition(R.anim.slide_in_left, R.anim.slide_out_right)
         }
-        finish()
     }
 
     companion object {
