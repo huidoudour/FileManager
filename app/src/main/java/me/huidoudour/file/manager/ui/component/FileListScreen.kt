@@ -4,6 +4,10 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -21,6 +25,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,12 +35,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -83,33 +91,51 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
+import me.huidoudour.file.manager.ui.theme.FileTintFolder
 import me.huidoudour.file.manager.util.FileCategory
 import me.huidoudour.file.manager.util.FileTypeUtil
 import me.huidoudour.file.manager.util.MediaProbe
 import me.huidoudour.file.manager.util.SortMode
 import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * 文件管理器主界面 — MaterialFiles 风格
@@ -192,6 +218,92 @@ fun FileListScreen(
         }
     }
 
+    // ---- 进入文件夹的容器变换动画 (Android 11 风格) --------------------------
+    // 点击的文件夹行扩展成整页, 名称飘到面包屑右侧成为新的一段, 相邻行上下分离。
+    // 各元素位置在点击瞬间从 root 坐标系采样后冻结, 动画期间不再变化。
+    val rowBoundsMap = remember { mutableMapOf<String, Rect>() }
+    val nameBoundsMap = remember { mutableMapOf<String, Rect>() }
+    var listContentBounds by remember { mutableStateOf<Rect?>(null) }
+    var breadcrumbTailBounds by remember { mutableStateOf<Rect?>(null) }
+    var folderOpenTransition by remember { mutableStateOf<FolderTransformStart?>(null) }
+    val folderOpenProgress = remember { Animatable(0f) }
+    var folderOpenRunning by remember { mutableStateOf(false) }
+    var rootOrigin by remember { mutableStateOf(Offset.Zero) }
+
+    /** 启动容器变换过渡; 条件不满足时返回 false, 由调用方回退到普通淡入过渡。 */
+    fun startFolderOpen(target: FileItem): Boolean {
+        if (folderOpenRunning) return false
+        if (pickerMode || saveMode || selectionMode || searching) return false
+        if (!target.isDirectory || !target.canRead) return false
+        val row = rowBoundsMap[target.path] ?: return false
+        val content = listContentBounds ?: return false
+        val breadcrumb = breadcrumbTailBounds ?: return false
+        val index = displayedFiles.indexOfFirst { it.path == target.path }
+        if (index < 0) return false
+
+        val nameRect = nameBoundsMap[target.path] ?: row
+
+        folderOpenRunning = true
+        folderOpenTransition = FolderTransformStart(
+            item = target,
+            sourcePath = currentPath,
+            rowBounds = row,
+            nameBounds = nameRect,
+            contentBounds = content,
+            breadcrumbBounds = breadcrumb,
+            clickedIndex = index
+        )
+        scope.launch {
+            try {
+                folderOpenProgress.snapTo(0f)
+                // 阶段一: 卡片从被点的行扩张到整个内容区, 名称飞向面包屑, 相邻行分离
+                folderOpenProgress.animateTo(
+                    targetValue = FOLDER_OPEN_PHASE_SPLIT,
+                    animationSpec = tween(
+                        durationMillis = FOLDER_OPEN_EXPAND_MS,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+                // 卡片已完全遮住内容区, 此时静默切换目录
+                viewModel.navigateToDirectory(target)
+                withTimeoutOrNull(2_000L) {
+                    viewModel.currentPath.first { it == target.path }
+                }
+                // 阶段二: 卡片淡出, 露出新目录列表 (面包屑已同步长出新的路径段)
+                folderOpenProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(
+                        durationMillis = FOLDER_OPEN_SETTLE_MS,
+                        easing = LinearOutSlowInEasing
+                    )
+                )
+            } finally {
+                folderOpenTransition = null
+                folderOpenRunning = false
+            }
+        }
+        return true
+    }
+
+    /**
+     * 返回上级。
+     *
+     * 目录内容不做位移动画（对齐 MaterialFiles 的观感：切换是即刻的，只有内容极短淡入），
+     * 因此这里在容器变换动画进行中吞掉重复返回，避免和动画内部的跳转叠加成连退两级。
+     *
+     * @return false 表示实际上无法返回（调用方据此处理失败，例如退出选择器）
+     */
+    fun navigateUpGuarded(): Boolean {
+        if (folderOpenRunning) return true
+        return viewModel.navigateUp()
+    }
+
+    /** 后退（含同级历史跳转）；同样走即刻切换 + 极短淡入。 */
+    fun navigateBackGuarded() {
+        if (folderOpenRunning) return
+        viewModel.navigateBack()
+    }
+
     val internalStorageLabel = stringResource(R.string.internal_storage)
 
     // 顶栏副标题: 条目统计 (照搬 MaterialFiles 的 getSubtitle)
@@ -255,7 +367,7 @@ fun FileListScreen(
             selectionMode -> viewModel.clearSelection()
             isSearchActive -> viewModel.closeSearch()
             // 剩余情况只会是"还能返回上级目录"
-            else -> viewModel.navigateUp()
+            else -> navigateUpGuarded()
         }
     }
 
@@ -371,6 +483,7 @@ fun FileListScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .onGloballyPositioned { rootOrigin = it.boundsInRoot().topLeft }
             .background(MaterialTheme.colorScheme.background)
     ) {
         AnimatedContent(
@@ -542,11 +655,11 @@ fun FileListScreen(
                                     isBookmarked = currentPath in favorites,
                                     onOpenDrawer = { scope.launch { drawerState.open() } },
                                     onNavigateBack = {
-                                        if (!viewModel.navigateUp()) {
+                                        if (!navigateUpGuarded()) {
                                             onPickCancelled?.invoke()
                                         }
                                     },
-                                    onNavigateUp = { viewModel.navigateUp() },
+                                    onNavigateUp = { navigateUpGuarded() },
                                     onNavigateTo = { showNavigateToDialog = true },
                                     onPathClick = { path -> viewModel.loadDirectory(path) },
                                     onSearchClick = { viewModel.openSearch() },
@@ -577,7 +690,8 @@ fun FileListScreen(
                                         )
                                     },
                                     onCopyPath = { viewModel.copyPathToClipboard(currentPath) },
-                                    onExitApp = { onExitApp?.invoke() }
+                                    onExitApp = { onExitApp?.invoke() },
+                                    onBreadcrumbBounds = { breadcrumbTailBounds = it }
                                 )
                             }
                         },
@@ -610,11 +724,11 @@ fun FileListScreen(
                                         canBack = canGoBack,
                                         canForward = canGoForward,
                                         atRoot = !canNavigateUp,
-                                        onBack = { viewModel.navigateBack() },
+                                        onBack = { navigateBackGuarded() },
                                         onForward = { viewModel.navigateForward() },
                                         onHome = { viewModel.navigateHome() },
                                         onCreateFolder = { createDialogIsFolder = true },
-                                        onNavigateUp = { viewModel.navigateUp() }
+                                        onNavigateUp = { navigateUpGuarded() }
                                     )
                                 }
                             }
@@ -644,41 +758,45 @@ fun FileListScreen(
                                 .padding(innerPadding)
                         ) {
 
-                            // 目录切换动画：以 currentPath 作为目标状态，
-                            // 进入子目录时新列表从右滑入，返回上级 / 后退时从左滑入。
+                            // 目录切换过渡：以 currentPath 作为目标状态。
+                            // 进入子目录时由容器变换过渡层接管；其余情况走穿过式淡入，
+                            // 旧页先离场、新页再落定，两页不重叠，因此不会叠出重影。
                             AnimatedContent(
                                 targetState = currentPath,
                                 transitionSpec = {
-                                    // 目标路径是原路径的后代 → 进入子目录（向前）；
-                                    // 反之则是返回上级 / 历史后退（向后）。
-                                    val enteringChild = isDescendantPath(targetState, initialState)
-                                    (
-                                        slideInHorizontally(
+                                    // 进入文件夹: 容器变换过渡自带遮罩与页面切换, 页面本身不再位移。
+                                    if (folderOpenTransition != null) {
+                                        EnterTransition.None togetherWith ExitTransition.None
+                                    } else {
+                                        // 其余目录切换 (返回上级 / 面包屑 / 抽屉跳转) 走"穿过式淡入":
+                                        // 旧页先加速淡出, 新页随后淡入并由 0.92 回到 1。两页不会同时
+                                        // 可见, 因此不会叠出重影, 也不会像硬切那样突兀; 总时长约 250ms。
+                                        (
+                                            fadeIn(
+                                                animationSpec = tween(
+                                                    durationMillis = DIR_FADE_IN_MS,
+                                                    delayMillis = DIR_IN_DELAY_MS,
+                                                    easing = LinearOutSlowInEasing
+                                                )
+                                            ) + scaleIn(
+                                                animationSpec = tween(
+                                                    durationMillis = DIR_FADE_IN_MS,
+                                                    delayMillis = DIR_IN_DELAY_MS,
+                                                    easing = LinearOutSlowInEasing
+                                                ),
+                                                initialScale = DIR_ENTER_SCALE
+                                            )
+                                        ) togetherWith fadeOut(
                                             animationSpec = tween(
-                                                durationMillis = 250,
-                                                easing = LinearOutSlowInEasing
-                                            ),
-                                            initialOffsetX = { fullWidth ->
-                                                if (enteringChild) fullWidth else -fullWidth
-                                            }
-                                        ) +
-                                        fadeIn(
-                                            animationSpec = tween(durationMillis = 250, delayMillis = 40)
+                                                durationMillis = DIR_FADE_OUT_MS,
+                                                easing = FastOutLinearInEasing
+                                            )
                                         )
-                                    ) togetherWith (
-                                        slideOutHorizontally(
-                                            animationSpec = tween(
-                                                durationMillis = 250,
-                                                easing = FastOutSlowInEasing
-                                            ),
-                                            targetOffsetX = { fullWidth ->
-                                                if (enteringChild) -fullWidth / 3 else fullWidth / 3
-                                            }
-                                        ) +
-                                        fadeOut(animationSpec = tween(durationMillis = 180))
-                                    )
+                                    }
                                 },
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .onGloballyPositioned { listContentBounds = it.boundsInRoot() },
                                 label = "directoryNavigation"
                             ) { pagePath ->
                                 // 退场页面沿用该目录自己的条目快照，
@@ -725,88 +843,129 @@ fun FileListScreen(
                                                 bottom = if (fabVisible) 88.dp else 8.dp
                                             )
                                         ) {
-                                            items(
+                                            itemsIndexed(
                                                 items = pageFiles,
-                                                key = { it.path }
-                                            ) { fileItem ->
-                                                FileItemRow(
-                                                    fileItem = fileItem,
-                                                    viewModel = viewModel,
-                                                    isChecked = fileItem.path in selectedPaths,
-                                                    isFavorite = fileItem.path in favorites,
-                                                    isMenuShown = actionTarget?.path == fileItem.path,
-                                                    showThumbnails = showThumbnails,
-                                                    onItemClick = {
-                                                        when {
-                                                            selectionMode ->
-                                                                viewModel.toggleSelection(fileItem)
-                                                            fileItem.isDirectory -> {
-                                                                if (searching) viewModel.closeSearch()
-                                                                viewModel.navigateToDirectory(fileItem)
-                                                            }
-                                                            else -> {
-                                                                val category = FileTypeUtil.getCategory(fileItem)
-                                                                when {
-                                                                    // 图片文件: 打开内置图片预览 (全屏查看器)
-                                                                    !pickerMode && !saveMode &&
-                                                                        category == FileCategory.IMAGE ->
-                                                                        previewTarget = fileItem
-
-                                                                    // 音视频文件: 打开内置预览 (解析信息/缩略图/波形 + 播放)
-                                                                    !pickerMode && !saveMode && MediaProbe.isSupported &&
-                                                                        (category == FileCategory.VIDEO || category == FileCategory.AUDIO) ->
-                                                                        previewTarget = fileItem
-
-                                                                    else -> onFileSelected?.invoke(fileItem)
+                                                key = { _, fileItem -> fileItem.path }
+                                            ) { index, fileItem ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .onGloballyPositioned { coordinates ->
+                                                            rowBoundsMap[fileItem.path] =
+                                                                coordinates.boundsInRoot()
+                                                        }
+                                                        .graphicsLayer {
+                                                            // 容器变换期间: 被点的行原地隐入卡片,
+                                                            // 上方的行向上、下方的行向下分离。
+                                                            val open = folderOpenTransition
+                                                            if (open != null && open.sourcePath == pagePath) {
+                                                                val split = FastOutSlowInEasing.transform(
+                                                                    (folderOpenProgress.value /
+                                                                        FOLDER_OPEN_PHASE_SPLIT)
+                                                                        .coerceIn(0f, 1f)
+                                                                )
+                                                                if (index == open.clickedIndex) {
+                                                                    alpha = 1f - split
+                                                                } else {
+                                                                    val distance =
+                                                                        abs(index - open.clickedIndex)
+                                                                            .coerceAtMost(6)
+                                                                    val direction =
+                                                                        if (index < open.clickedIndex) -1f else 1f
+                                                                    translationY = direction *
+                                                                        (10.dp.toPx() + 7.dp.toPx() * distance) *
+                                                                        split
+                                                                    alpha = 1f - split * 0.85f
                                                                 }
                                                             }
                                                         }
-                                                    },
-                                                    onIconClick = if (pickerMode || saveMode) {
-                                                        {}
-                                                    } else {
-                                                        { viewModel.toggleSelection(fileItem) }
-                                                    },
-                                                    onItemLongClick = if (pickerMode || saveMode) null else ({
-                                                        if (selectionMode) {
-                                                            if (fileItem.isDirectory) {
-                                                                if (searching) viewModel.closeSearch()
-                                                                viewModel.navigateToDirectory(fileItem)
-                                                            } else {
-                                                                onFileSelected?.invoke(fileItem)
+                                                ) {
+                                                    FileItemRow(
+                                                        fileItem = fileItem,
+                                                        viewModel = viewModel,
+                                                        isChecked = fileItem.path in selectedPaths,
+                                                        isFavorite = fileItem.path in favorites,
+                                                        isMenuShown = actionTarget?.path == fileItem.path,
+                                                        showThumbnails = showThumbnails,
+                                                        onNameBounds = { bounds ->
+                                                            nameBoundsMap[fileItem.path] = bounds
+                                                        },
+                                                        onItemClick = {
+                                                            when {
+                                                                selectionMode ->
+                                                                    viewModel.toggleSelection(fileItem)
+                                                                fileItem.isDirectory -> {
+                                                                    if (searching) viewModel.closeSearch()
+                                                                    // 能取到位置信息时走容器变换过渡,
+                                                                    // 否则回退到普通滑动过渡。
+                                                                    if (!startFolderOpen(fileItem)) {
+                                                                        viewModel.navigateToDirectory(fileItem)
+                                                                    }
+                                                                }
+                                                                else -> {
+                                                                    val category = FileTypeUtil.getCategory(fileItem)
+                                                                    when {
+                                                                        // 图片文件: 打开内置图片预览 (全屏查看器)
+                                                                        !pickerMode && !saveMode &&
+                                                                            category == FileCategory.IMAGE ->
+                                                                            previewTarget = fileItem
+
+                                                                        // 音视频文件: 打开内置预览 (解析信息/缩略图/波形 + 播放)
+                                                                        !pickerMode && !saveMode && MediaProbe.isSupported &&
+                                                                            (category == FileCategory.VIDEO || category == FileCategory.AUDIO) ->
+                                                                            previewTarget = fileItem
+
+                                                                        else -> onFileSelected?.invoke(fileItem)
+                                                                    }
+                                                                }
                                                             }
+                                                        },
+                                                        onIconClick = if (pickerMode || saveMode) {
+                                                            {}
                                                         } else {
-                                                            viewModel.toggleSelection(fileItem)
-                                                        }
-                                                    }),
-                                                    onMenuClick = { actionTarget = fileItem },
-                                                    onMenuDismiss = { actionTarget = null },
-                                                    onAction = { action ->
-                                                        when (action) {
-                                                            FileAction.COPY ->
-                                                                viewModel.copyToClipboard(listOf(fileItem))
-                                                            FileAction.CUT ->
-                                                                viewModel.cutToClipboard(listOf(fileItem))
-                                                            FileAction.DELETE ->
-                                                                deleteTargets = listOf(fileItem)
-                                                            FileAction.RENAME ->
-                                                                renameTarget = fileItem
-                                                            FileAction.SHARE ->
-                                                                onShareFiles?.invoke(listOf(fileItem))
-                                                            FileAction.FAVORITE ->
-                                                                viewModel.toggleFavorite(fileItem.path)
-                                                            FileAction.PIN_SIZE ->
-                                                                viewModel.togglePinFolder(fileItem.path)
-                                                            FileAction.REFRESH_SIZE ->
-                                                                viewModel.refreshFolderSize(fileItem.path)
-                                                            FileAction.PROPERTIES ->
-                                                                viewModel.showProperties(fileItem)
-                                                            FileAction.MULTI_SELECT ->
+                                                            { viewModel.toggleSelection(fileItem) }
+                                                        },
+                                                        onItemLongClick = if (pickerMode || saveMode) null else ({
+                                                            if (selectionMode) {
+                                                                if (fileItem.isDirectory) {
+                                                                    if (searching) viewModel.closeSearch()
+                                                                    viewModel.navigateToDirectory(fileItem)
+                                                                } else {
+                                                                    onFileSelected?.invoke(fileItem)
+                                                                }
+                                                            } else {
                                                                 viewModel.toggleSelection(fileItem)
+                                                            }
+                                                        }),
+                                                        onMenuClick = { actionTarget = fileItem },
+                                                        onMenuDismiss = { actionTarget = null },
+                                                        onAction = { action ->
+                                                            when (action) {
+                                                                FileAction.COPY ->
+                                                                    viewModel.copyToClipboard(listOf(fileItem))
+                                                                FileAction.CUT ->
+                                                                    viewModel.cutToClipboard(listOf(fileItem))
+                                                                FileAction.DELETE ->
+                                                                    deleteTargets = listOf(fileItem)
+                                                                FileAction.RENAME ->
+                                                                    renameTarget = fileItem
+                                                                FileAction.SHARE ->
+                                                                    onShareFiles?.invoke(listOf(fileItem))
+                                                                FileAction.FAVORITE ->
+                                                                    viewModel.toggleFavorite(fileItem.path)
+                                                                FileAction.PIN_SIZE ->
+                                                                    viewModel.togglePinFolder(fileItem.path)
+                                                                FileAction.REFRESH_SIZE ->
+                                                                    viewModel.refreshFolderSize(fileItem.path)
+                                                                FileAction.PROPERTIES ->
+                                                                    viewModel.showProperties(fileItem)
+                                                                FileAction.MULTI_SELECT ->
+                                                                    viewModel.toggleSelection(fileItem)
+                                                            }
+                                                            actionTarget = null
                                                         }
-                                                        actionTarget = null
-                                                    }
-                                                )
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -817,18 +976,22 @@ fun FileListScreen(
                 }
             }
         }
+        // 进入文件夹的容器变换过渡层: 覆盖在整个界面之上,
+        // 卡片扩张 / 名称飘入面包屑 / 遮挡期间的目录切换都由它负责。
+        val folderTransform = folderOpenTransition
+        if (folderTransform != null) {
+            FolderOpenOverlay(
+                start = folderTransform,
+                progress = folderOpenProgress,
+                containerOrigin = rootOrigin
+            )
+        }
     }
 }
 
 /** 目录切换快照最多保留的目录数量，避免长时间浏览后快照无限增长。 */
 private const val DIRECTORY_SNAPSHOT_LIMIT = 12
 
-/** 判断 [path] 是否位于 [ancestor] 目录内部（路径相等时返回 false）。 */
-private fun isDescendantPath(path: String, ancestor: String): Boolean {
-    if (path == ancestor) return false
-    val prefix = if (ancestor.endsWith('/')) ancestor else "$ancestor/"
-    return path.startsWith(prefix)
-}
 
 // =============================================================================
 //  普通模式顶栏
@@ -857,7 +1020,8 @@ private fun NormalTopBar(
     onToggleBookmark: () -> Unit,
     onShareCurrentDir: () -> Unit,
     onCopyPath: () -> Unit,
-    onExitApp: () -> Unit
+    onExitApp: () -> Unit,
+    onBreadcrumbBounds: ((Rect) -> Unit)? = null
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -1056,7 +1220,8 @@ private fun NormalTopBar(
 
         BreadcrumbBar(
             currentPath = currentPath,
-            onPathClick = onPathClick
+            onPathClick = onPathClick,
+            onLastSegmentBounds = onBreadcrumbBounds
         )
     }
 }
@@ -1537,7 +1702,9 @@ private fun PasteBar(
 //  空列表占位 (照搬 MaterialFiles 的 empty view: 240dp 大图标 + 文案)
 // =============================================================================
 @Composable
-private fun RefreshableCenter(content: @Composable () -> Unit) {
+private fun RefreshableCenter(
+    content: @Composable () -> Unit
+) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
             Box(
@@ -1575,16 +1742,24 @@ private fun EmptyPlaceholder(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun BreadcrumbBar(
     currentPath: String,
-    onPathClick: (String) -> Unit
+    onPathClick: (String) -> Unit,
+    onLastSegmentBounds: ((Rect) -> Unit)? = null
 ) {
     val internalStorage = stringResource(R.string.internal_storage)
     val segments = remember(currentPath) { buildPathSegments(currentPath, internalStorage) }
+    val scrollState = rememberScrollState()
+    // 进入更深目录后滚动到末尾, 让新增的路径段立即出现在面包屑末尾,
+    // 文件夹展开动画的名称落点也据此计算。
+    LaunchedEffect(segments.size) {
+        withFrameNanos { }
+        scrollState.animateScrollTo(scrollState.maxValue)
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
             .padding(start = 60.dp, end = 4.dp)
-            .horizontalScroll(rememberScrollState()),
+            .horizontalScroll(scrollState),
         verticalAlignment = Alignment.CenterVertically
     ) {
         segments.forEachIndexed { index, (name, path) ->
@@ -1607,7 +1782,14 @@ private fun BreadcrumbBar(
                     else
                         MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = if (onLastSegmentBounds != null && index == segments.lastIndex) {
+                        Modifier.onGloballyPositioned {
+                            onLastSegmentBounds(it.boundsInRoot())
+                        }
+                    } else {
+                        Modifier
+                    }
                 )
                 if (index < segments.lastIndex) {
                     Icon(
@@ -1648,3 +1830,128 @@ private fun buildPathSegments(path: String, rootLabel: String): List<Pair<String
     }
     return segments
 }
+
+// =============================================================================
+//  进入文件夹的容器变换过渡 (Android 11 风格)
+// =============================================================================
+
+/** 阶段一的上限进度：卡片铺满内容区、目录切换发生的时刻。 */
+private const val FOLDER_OPEN_PHASE_SPLIT = 0.5f
+
+/** 卡片从被点的行扩展到整个内容区的时长。 */
+private const val FOLDER_OPEN_EXPAND_MS = 240
+
+/** 卡片淡出、露出新目录列表的时长。 */
+private const val FOLDER_OPEN_SETTLE_MS = 200
+
+/** 点击瞬间冻结的几何信息（均位于 root 坐标系）。 */
+private data class FolderTransformStart(
+    val item: FileItem,
+    val sourcePath: String,
+    val rowBounds: Rect,
+    val nameBounds: Rect,
+    val contentBounds: Rect,
+    val breadcrumbBounds: Rect,
+    val clickedIndex: Int
+)
+
+/**
+ * 容器变换过渡层：
+ * 被点击的文件夹行扩张成整页，名称飘到面包屑末尾成为新的一段，
+ * 相邻的行分别向上 / 向下分离，卡片铺满后静默切换目录再淡出。
+ */
+@Composable
+private fun FolderOpenOverlay(
+    start: FolderTransformStart,
+    progress: Animatable<Float, AnimationVector1D>,
+    containerOrigin: Offset
+) {
+    val density = LocalDensity.current
+    val split = FastOutSlowInEasing.transform(
+        (progress.value / FOLDER_OPEN_PHASE_SPLIT).coerceIn(0f, 1f)
+    )
+    val reveal = ((progress.value - FOLDER_OPEN_PHASE_SPLIT) / (1f - FOLDER_OPEN_PHASE_SPLIT))
+        .coerceIn(0f, 1f)
+
+    val rowRect = start.rowBounds.translate(-containerOrigin.x, -containerOrigin.y)
+    val contentRect = start.contentBounds.translate(-containerOrigin.x, -containerOrigin.y)
+    val cardRect = lerpRect(rowRect, contentRect, split)
+    val cardShape = RoundedCornerShape(12.dp * (1f - split))
+
+    val nameRect = start.nameBounds.translate(-containerOrigin.x, -containerOrigin.y)
+    val breadcrumbRect = start.breadcrumbBounds.translate(-containerOrigin.x, -containerOrigin.y)
+    // 名称的落点：面包屑最后一段的右侧，即新路径段即将出现的位置
+    // （路径过深时面包屑可横向滚动，落点收进内容区右边缘内，避免飞出屏幕）
+    val nameGap = with(density) { 8.dp.toPx() }
+    val nameTargetX = minOf(breadcrumbRect.right + nameGap, contentRect.right - nameGap)
+    val nameTargetY = breadcrumbRect.center.y - nameRect.height / 2f
+    val nameAlpha = if (split < 0.86f) 1f else ((1f - split) / 0.14f).coerceIn(0f, 1f)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // 过渡期间吞掉点击，避免误触到下面的列表和顶栏
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(cardRect.left.roundToInt(), cardRect.top.roundToInt()) }
+                .size(
+                    width = with(density) { cardRect.width.toDp() },
+                    height = with(density) { cardRect.height.toDp() }
+                )
+                .graphicsLayer {
+                    alpha = 1f - reveal
+                    shape = cardShape
+                    shadowElevation = (8.dp * (1f - split)).toPx()
+                }
+                .background(MaterialTheme.colorScheme.background, cardShape)
+        )
+
+        Text(
+            text = start.item.name,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            modifier = Modifier
+                .width(with(density) { nameRect.width.toDp() })
+                .graphicsLayer {
+                    transformOrigin = TransformOrigin(0f, 0f)
+                    translationX = nameRect.left + (nameTargetX - nameRect.left) * split
+                    translationY = nameRect.top + (nameTargetY - nameRect.top) * split
+                    val nameScale = 1f - 0.12f * split
+                    scaleX = nameScale
+                    scaleY = nameScale
+                    alpha = nameAlpha
+                }
+        )
+    }
+}
+
+/** 在两个矩形之间线性插值，用于卡片扩张。 */
+private fun lerpRect(from: Rect, to: Rect, fraction: Float): Rect = Rect(
+    left = from.left + (to.left - from.left) * fraction,
+    top = from.top + (to.top - from.top) * fraction,
+    right = from.right + (to.right - from.right) * fraction,
+    bottom = from.bottom + (to.bottom - from.bottom) * fraction
+)
+
+// =============================================================================
+//  目录切换过渡
+// =============================================================================
+
+/** 目录切换时旧页淡出时长 (加速离场)。 */
+private const val DIR_FADE_OUT_MS = 90
+
+/** 新页淡入的启动延迟: 略短于旧页淡出时长, 留一点轻微交叠以掩盖背景闪白。 */
+private const val DIR_IN_DELAY_MS = 60
+
+/** 目录切换时新页淡入 (同时由 [DIR_ENTER_SCALE] 回到 1) 的时长。 */
+private const val DIR_FADE_IN_MS = 180
+
+/** 新页淡入的起始缩放值, 让列表有轻微"向前落定"的纵深感。 */
+private const val DIR_ENTER_SCALE = 0.92f

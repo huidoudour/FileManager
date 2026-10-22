@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -55,6 +56,8 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -194,6 +197,7 @@ fun FileItemRow(
     isFavorite: Boolean = false,
     isMenuShown: Boolean = false,
     showThumbnails: Boolean = true,
+    onNameBounds: ((Rect) -> Unit)? = null,
     onItemClick: () -> Unit,
     onIconClick: () -> Unit = {},
     onItemLongClick: (() -> Unit)? = null,
@@ -314,7 +318,17 @@ fun FileItemRow(
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .then(
+                            if (onNameBounds != null) {
+                                Modifier.onGloballyPositioned {
+                                    onNameBounds(it.boundsInRoot())
+                                }
+                            } else {
+                                Modifier
+                            }
+                        ),
                     color = if (fileItem.canRead)
                         MaterialTheme.colorScheme.onSurface
                     else
