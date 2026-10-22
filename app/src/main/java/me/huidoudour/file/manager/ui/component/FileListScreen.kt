@@ -655,7 +655,7 @@ fun FileListScreen(
                                     (
                                         slideInHorizontally(
                                             animationSpec = tween(
-                                                durationMillis = 300,
+                                                durationMillis = 250,
                                                 easing = LinearOutSlowInEasing
                                             ),
                                             initialOffsetX = { fullWidth ->
@@ -663,19 +663,19 @@ fun FileListScreen(
                                             }
                                         ) +
                                         fadeIn(
-                                            animationSpec = tween(durationMillis = 300, delayMillis = 50)
+                                            animationSpec = tween(durationMillis = 250, delayMillis = 40)
                                         )
                                     ) togetherWith (
                                         slideOutHorizontally(
                                             animationSpec = tween(
-                                                durationMillis = 300,
+                                                durationMillis = 250,
                                                 easing = FastOutSlowInEasing
                                             ),
                                             targetOffsetX = { fullWidth ->
                                                 if (enteringChild) -fullWidth / 3 else fullWidth / 3
                                             }
                                         ) +
-                                        fadeOut(animationSpec = tween(durationMillis = 220))
+                                        fadeOut(animationSpec = tween(durationMillis = 180))
                                     )
                                 },
                                 modifier = Modifier.fillMaxSize(),
