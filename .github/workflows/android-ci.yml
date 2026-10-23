@@ -1,12 +1,13 @@
 name: Android CI
 
-# Triggered on every push to master
+# Triggered on every push to any branch; '**' keeps tag pushes (e.g. releases)
+# from starting a new build
 on:
   push:
     branches:
-      - master
+      - '**'
 
-# Keep every master build: each push produces a distinct release artifact
+# Keep every build: each push produces a distinct release artifact
 concurrency:
   group: android-ci-${{ github.ref }}
   cancel-in-progress: false
@@ -40,13 +41,60 @@ jobs:
       - name: Enable Gradle cache
         uses: gradle/actions/setup-gradle@v6
 
-      # No signing properties are passed, so the release build type falls back
-      # to the debug signing config and produces a runnable release APK
+      # Rebuild the release keystore from the base64 secret stored in the repo
+      # settings, so the release APK carries the release certificate instead of
+      # the debug one. When the secret is unavailable (e.g. a fork), the step
+      # only warns and the build keeps falling back to the debug signing config.
+      - name: Prepare signing keystore
+        env:
+          KEY_STORE_B64: ${{ secrets.SIGN_KEY_STORE_B64 }}
+          KEY_STORE_PASS: ${{ secrets.SIGN_KEY_PASSWD }}
+          KEY_ALIAS: ${{ secrets.SIGN_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEY_STORE_B64" ]; then
+            echo "::warning::SIGN_KEY_STORE_B64 is not configured, the release APK falls back to the debug signing key"
+            exit 0
+          fi
+          KEYSTORE="$RUNNER_TEMP/release.keystore"
+          # Strip whitespace/CRLF so a base64 payload copied on Windows decodes
+          printf '%s' "$KEY_STORE_B64" | tr -d ' \t\r\n' | base64 --decode > "$KEYSTORE"
+          # Fail here with a clear message instead of inside the signing task
+          # when the keystore is truncated or the password/alias does not match
+          keytool -list -keystore "$KEYSTORE" -storepass:env KEY_STORE_PASS -alias "$KEY_ALIAS" > /dev/null
+          {
+            echo "SIGN_KEYSTORE=$KEYSTORE"
+            echo "SIGNING_ENABLED=true"
+          } >> "$GITHUB_ENV"
+
+      # Signing properties are passed only when the keystore was decoded above;
+      # without them the release build type uses the debug signing config
       - name: Release build (full warnings)
+        env:
+          KEY_STORE_PASS: ${{ secrets.SIGN_KEY_PASSWD }}
+          KEY_ALIAS: ${{ secrets.SIGN_KEY_ALIAS }}
         run: |
           # gradlew may lose its executable bit after checkout; restore it first
           chmod +x gradlew
-          ./gradlew assembleRelease --warning-mode all
+          SIGN_ARGS=()
+          if [ "${SIGNING_ENABLED:-false}" = "true" ]; then
+            # SIGN_KEY_PASSWD doubles as the key password (Android keystores
+            # created by keytool/Studio normally use the store password for both)
+            SIGN_ARGS=(
+              -PstoreFile="$SIGN_KEYSTORE"
+              -PstorePassword="$KEY_STORE_PASS"
+              -PkeyAlias="$KEY_ALIAS"
+              -PkeyPassword="$KEY_STORE_PASS"
+            )
+          fi
+          ./gradlew assembleRelease --warning-mode all "${SIGN_ARGS[@]}"
+
+      # Informational only: print the certificate that actually signed the APK
+      - name: Verify APK signature
+        if: env.SIGNING_ENABLED == 'true'
+        continue-on-error: true
+        run: |
+          APKSIGNER="$(ls "${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"/build-tools/*/apksigner | tail -n 1)"
+          "$APKSIGNER" verify --print-certs build/app/outputs/apk/release/*.apk
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v7

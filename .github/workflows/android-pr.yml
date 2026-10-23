@@ -1,4 +1,4 @@
-name: Android Compile
+name: PR Debug build
 
 # Triggered by pull requests only; PRs may target any branch
 on:
@@ -7,12 +7,12 @@ on:
 # Forced-push friendly: every new push (including force push) to the same PR
 # starts a new run and cancels the old one, keeping only the latest result
 concurrency:
-  group: android-compile-${{ github.event.pull_request.number }}
+  group: android-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  compile:
-    name: PR Compile Check
+  build:
+    name: PR Debug Build
     runs-on: ubuntu-latest
     steps:
       # Version numbering depends on the commit count; fetch the full history
@@ -39,10 +39,16 @@ jobs:
       - name: Enable Gradle cache
         uses: gradle/actions/setup-gradle@v6
 
-      # Compile-only check: compile Kotlin/Java sources for the debug variant
-      # without dexing, packaging or signing an APK
-      - name: Compile debug sources (full warnings)
+      # Build a runnable debug APK; no signing properties are passed, so the
+      # debug build type uses the default debug signing config
+      - name: Debug build (full warnings)
         run: |
           # gradlew may lose its executable bit after checkout; restore it first
           chmod +x gradlew
-          ./gradlew compileDebugSources --warning-mode all
+          ./gradlew assembleDebug --warning-mode all
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug-apk-pr-${{ github.event.pull_request.number }}
+          path: build/app/outputs/apk/debug/*.apk
