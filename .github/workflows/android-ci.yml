@@ -56,15 +56,15 @@ jobs:
             exit 0
           fi
           KEYSTORE="$RUNNER_TEMP/release.keystore"
+          # Export the path first so the cleanup step can remove the keystore
+          # even when the validation below fails and the job aborts
+          echo "SIGN_KEYSTORE=$KEYSTORE" >> "$GITHUB_ENV"
           # Strip whitespace/CRLF so a base64 payload copied on Windows decodes
           printf '%s' "$KEY_STORE_B64" | tr -d ' \t\r\n' | base64 --decode > "$KEYSTORE"
           # Fail here with a clear message instead of inside the signing task
           # when the keystore is truncated or the password/alias does not match
           keytool -list -keystore "$KEYSTORE" -storepass:env KEY_STORE_PASS -alias "$KEY_ALIAS" > /dev/null
-          {
-            echo "SIGN_KEYSTORE=$KEYSTORE"
-            echo "SIGNING_ENABLED=true"
-          } >> "$GITHUB_ENV"
+          echo "SIGNING_ENABLED=true" >> "$GITHUB_ENV"
 
       # Signing properties are passed only when the keystore was decoded above;
       # without them the release build type uses the debug signing config
@@ -101,3 +101,11 @@ jobs:
         with:
           name: release-apk
           path: build/app/outputs/apk/release/*.apk
+
+      # GitHub-hosted runners are thrown away after the job, but RUNNER_TEMP
+      # survives between jobs on self-hosted runners; always wipe the keystore
+      - name: Remove signing keystore
+        if: always() && env.SIGN_KEYSTORE != ''
+        run: |
+          rm -f "$SIGN_KEYSTORE"
+          echo "SIGN_KEYSTORE=" >> "$GITHUB_ENV"
