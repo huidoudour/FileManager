@@ -101,25 +101,25 @@ android {
         warningsAsErrors = false
         abortOnError = true
         disable += setOf(
-            "HardcodedText",           // 允许硬编码文本(调试阶段)
-            "SetTextI18n",             // 允许文本拼接
-            "DefaultLocale",           // 允许默认Locale
-            "SdCardPath",              // 允许硬编码路径(系统工具)
-            "UseTomlInstead",          // 暂不强制使用版本目录
-            "ObsoleteSdkInt",          // 允许过时的SDK版本检查
-            "UnusedResources",         // 允许未使用资源(可能被动态引用)
-            "Overdraw",                // 允许过度绘制
-            "UselessParent",           // 允许冗余父布局
-            "Autofill",                // 不强制自动填充提示
-            "FragmentTagUsage",        // 允许使用fragment标签
-            "GradleDependency",        // 不强制更新依赖
             "NewerVersionAvailable",   // 不强制更新到最新版本
             "SelectedPhotoAccess",     // 忽略照片权限警告
-            "PhotoAndVideoPolicy"      // 忽略照片权限警告
+            "PhotoAndVideoPolicy",     // 忽略照片权限警告
+            "FragmentTagUsage",        // 允许使用fragment标签
+            "GradleDependency",        // 不强制更新依赖
+            "UnusedResources",         // 允许未使用资源(可能被动态引用)
+            "UseTomlInstead",          // 暂不强制使用版本目录
+            "ObsoleteSdkInt",          // 允许过时的SDK版本检查
+            "HardcodedText",           // 允许硬编码文本(调试阶段)
+            "UselessParent",           // 允许冗余父布局
+            "DefaultLocale",           // 允许默认Locale
+            "SetTextI18n",             // 允许文本拼接
+            "SdCardPath",              // 允许硬编码路径(系统工具)
+            "Overdraw",                // 允许过度绘制
+            "Autofill",                // 不强制自动填充提示
         )
         checkOnly += setOf(
-            "NotSibling",              // 必须检查布局引用错误
             "DuplicateIds",            // 必须检查重复ID
+            "NotSibling",              // 必须检查布局引用错误
             "UnknownId"                // 必须检查未知ID引用
         )
     }
@@ -127,38 +127,33 @@ android {
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material.icons.extended)
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.profileinstaller)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(libs.androidx.junit)
+
+    implementation(libs.androidx.profileinstaller)
     "baselineProfile"(project(":baseline"))
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.material3.adaptive.navigation.suite)
 
     implementation(libs.androidx.compose.ui.test.manifest)
-    //noinspection UseTomlInstead
     implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-beta02")
 
     // FFmpeg (音视频解析/缩略图/波形) 与 media3 (播放 / 媒体会话系统控制 / 后台播放)
-    implementation(libs.dev.ffmpegkit.min)
     implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.session)
+    implementation(libs.androidx.media3.ui)
+    implementation(libs.dev.ffmpegkit.min)
 
-    // ACRA (Apache-2.0): 捕获 Java 未处理异常并落盘崩溃报告, 供应用内查看/分享
     implementation(libs.acra.core)
     // xCrash (MIT): 捕获 Native 崩溃与 ANR, 补充 ACRA 无法覆盖的原生异常
     // 本地自编译 AAR (NDK r30, LOAD 段 16KB 对齐), 替代 Maven 上 4KB 对齐的 3.1.0, 满足 Android 15+ 16KB page size 要求

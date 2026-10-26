@@ -137,9 +137,17 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <provider
+            android:name="org.acra.attachment.AcraContentProvider"
+            android:authorities="${applicationId}.acra"
+            android:exported="false"
+            android:grantUriPermissions="true"
+            android:process=":acra"
+            tools:replace="android:authorities" />
+
         <meta-data
             android:name="me.huidoudour.core.version"
-            android:value="40" />
+            android:value="56" />
     </application>
 
 </manifest>
