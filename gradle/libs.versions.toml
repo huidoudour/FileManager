@@ -1,6 +1,5 @@
 [versions]
-#noinspection AndroidGradlePluginVersion
-agp = "9.5.0" # 稳定版本回退
+agp = "9.5.0"
 coreKtx = "1.19.1"
 junit = "4.13.2"
 junitVersion = "1.3.0"
@@ -50,6 +49,7 @@ acra-core = { group = "ch.acra", name = "acra-core", version.ref = "acra" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 android-test = { id = "com.android.test", version.ref = "agp" }
 baselineprofile = { id = "androidx.baselineprofile", version.ref = "baselineprofile" }

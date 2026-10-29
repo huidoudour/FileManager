@@ -6,7 +6,9 @@ plugins {
 android {
     namespace = "me.huidoudour.file.manager.baselineprofile"
     compileSdk {
-        version = release(37)
+        version = release(37) {
+            minorApiLevel = 0
+        }
     }
 
     compileOptions {
