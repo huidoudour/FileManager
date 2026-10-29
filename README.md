@@ -32,6 +32,7 @@
 
 - [MaterialFiles](https://github.com/zhanghai/MaterialFiles) — UI&功能设计参考
 - [MT 管理器](https://mt2.cn/) — UI 风格参考
+- [xCrash](https://github.com/iqiyi/xCrash) — 源码使用
 
 > 若涉及到侵权，请联系我<br>
 > 本项目项目参考设计遵循上游项目的开源协议
