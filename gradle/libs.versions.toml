@@ -1,6 +1,6 @@
 [versions]
 #noinspection AndroidGradlePluginVersion
-agp = "9.4.1" # 稳定版本回退
+agp = "9.5.0" # 稳定版本回退
 coreKtx = "1.19.1"
 junit = "4.13.2"
 junitVersion = "1.3.0"
