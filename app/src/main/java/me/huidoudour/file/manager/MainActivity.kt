@@ -235,14 +235,18 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        if (uris.isEmpty() && textContent.isNullOrBlank()) {
+        // 系统跨进程传递 Intent 时会自动把 EXTRA_STREAM 迁移进 ClipData (两者并存)，
+        // 两处都收集会得到重复 Uri，导致同一文件被保存两份，这里统一去重。
+        val uniqueUris = uris.distinct()
+
+        if (uniqueUris.isEmpty() && textContent.isNullOrBlank()) {
             Toast.makeText(this, getString(R.string.save_failed, "未接收到可保存的内容"), Toast.LENGTH_SHORT).show()
             setResult(RESULT_CANCELED)
             finishWithSlideBack()
             return
         }
 
-        viewModel.setSaveData(uris, textContent)
+        viewModel.setSaveData(uniqueUris, textContent)
     }
 
     /**

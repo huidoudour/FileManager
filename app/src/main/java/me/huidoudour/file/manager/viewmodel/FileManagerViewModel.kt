@@ -264,8 +264,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         val resolver = getApplication<Application>().contentResolver
         var saved = 0
 
-        // 保存 URI 文件
-        for (uri in data.uris) {
+        // 保存 URI 文件 (去重: 相同 Uri 只写入一次, 防止同一文件被保存多份)
+        for (uri in data.uris.distinct()) {
             try {
                 val name = queryDisplayName(uri, resolver)
                 val destFile = resolveDestFile(destDir, name)
