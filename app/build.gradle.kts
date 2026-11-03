@@ -29,8 +29,8 @@ val appVersionName = "${baseVersionName}.${gitCommitCount()}.${gitHash()}"
 
 android {
     namespace = "me.huidoudour.file.manager"
-    // 使用本机已安装的 NDK, 否则 stripDebugDebugSymbols 找不到默认版本会跳过符号剥离
     ndkVersion = "30.0.16248370"
+    buildToolsVersion = "37.0.0"
     compileSdk {
         version = release(37) {
             minorApiLevel = 2
@@ -44,8 +44,6 @@ android {
         versionName = appVersionName
 
         ndk {
-            // 覆盖全部主流 ABI (含 32 位设备)
-            // 注: ffmpeg-kit 仅提供 arm64-v8a / x86_64 原生库, 32 位机型上音视频预览自动回退系统打开
             abiFilters += setOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
         }
     }
@@ -148,7 +146,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.test.manifest)
     implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-beta02")
 
-    // FFmpeg (音视频解析/缩略图/波形) 与 media3 (播放 / 媒体会话系统控制 / 后台播放)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.ui)

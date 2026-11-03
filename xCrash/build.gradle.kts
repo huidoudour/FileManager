@@ -4,7 +4,8 @@ plugins {
 
 android {
     namespace = "xcrash.lib"
-    // 本机仅安装 android-37.0 平台, 不指定 minor 版本
+    buildToolsVersion = "37.0.0"
+    ndkVersion = "30.0.16248370"
     compileSdk {
         version = release(37) {
             minorApiLevel = 2
@@ -16,10 +17,8 @@ android {
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
         }
-        // 向引用本库的 App 传播混淆 keep 规则 (防止 R8 混淆 NativeHandler 导致 JNI 符号失配)
         consumerProguardFiles("proguard-rules.pro")
 
-        // 需要调试 native 崩溃时通过 -PuseASAN 开启 AddressSanitizer
         @Suppress("UnstableApiUsage")
         if (providers.gradleProperty("useASAN").isPresent) {
             externalNativeBuild {
@@ -47,13 +46,9 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            // 本机已安装的 CMake 版本
             version = "4.1.2"
         }
     }
-
-    // 使用本机已安装的 NDK (仅 r30)
-    ndkVersion = "30.0.16248370"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
