@@ -144,7 +144,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.material3.adaptive.navigation.suite)
 
     implementation(libs.androidx.compose.ui.test.manifest)
-    implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-beta02")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.13.0-rc01")
 
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)
