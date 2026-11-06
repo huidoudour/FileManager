@@ -151,6 +151,8 @@ fun FileListScreen(
     onSaveCancelled: (() -> Unit)? = null,
     onShareFiles: ((List<FileItem>) -> Unit)? = null,
     onOpenWith: ((FileItem) -> Unit)? = null,
+    onOpenWithChooser: ((FileItem) -> Unit)? = null,
+    onInstallApk: ((File) -> Unit)? = null,
     onExitApp: (() -> Unit)? = null
 ) {
     val currentPath by viewModel.currentPath.collectAsState()
@@ -191,6 +193,7 @@ fun FileListScreen(
     var renameTarget by remember { mutableStateOf<FileItem?>(null) }
     var deleteTargets by remember { mutableStateOf<List<FileItem>?>(null) }
     var actionTarget by remember { mutableStateOf<FileItem?>(null) }
+    var signTarget by remember { mutableStateOf<FileItem?>(null) }
     var previewTarget by remember { mutableStateOf<FileItem?>(null) }
     var fabExpanded by remember { mutableStateOf(false) }
 
@@ -447,6 +450,16 @@ fun FileListScreen(
 
     operationProgress?.let { progress ->
         OperationProgressDialog(progress)
+    }
+
+    // APK 签名: 应用内对话框完成签名（内置公开测试密钥）
+    signTarget?.let { target ->
+        ApkSignDialog(
+            item = target,
+            onInstall = { file -> onInstallApk?.invoke(file) },
+            onSigned = { viewModel.refresh() },
+            onDismiss = { signTarget = null }
+        )
     }
 
     propertiesTarget?.let { target ->
@@ -956,6 +969,10 @@ fun FileListScreen(
                                                         onMenuDismiss = { actionTarget = null },
                                                         onAction = { action ->
                                                             when (action) {
+                                                                FileAction.OPEN_WITH ->
+                                                                    onOpenWithChooser?.invoke(fileItem)
+                                                                FileAction.SIGN_APK ->
+                                                                    signTarget = fileItem
                                                                 FileAction.COPY ->
                                                                     viewModel.copyToClipboard(listOf(fileItem))
                                                                 FileAction.CUT ->

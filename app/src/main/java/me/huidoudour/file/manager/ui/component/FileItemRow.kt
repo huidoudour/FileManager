@@ -104,6 +104,8 @@ import java.io.File
 
 /** 单条文件的长按/菜单操作 */
 enum class FileAction(val labelRes: Int) {
+    OPEN_WITH(R.string.action_open_with),
+    SIGN_APK(R.string.action_sign_apk),
     COPY(R.string.action_copy),
     CUT(R.string.action_cut),
     DELETE(R.string.action_delete),
@@ -455,6 +457,13 @@ private fun FileActionMenu(
     if (!expanded) return
 
     val actions = buildList {
+        // 文件专属入口: 打开方式; APK 额外提供签名 (交给 ApkSign 的分享签名对话框)
+        if (!item.isDirectory) {
+            add(FileAction.OPEN_WITH.labelRes to FileAction.OPEN_WITH)
+            if (item.extension.equals("apk", ignoreCase = true)) {
+                add(FileAction.SIGN_APK.labelRes to FileAction.SIGN_APK)
+            }
+        }
         add(FileAction.CUT.labelRes to FileAction.CUT)
         add(FileAction.COPY.labelRes to FileAction.COPY)
         add(FileAction.DELETE.labelRes to FileAction.DELETE)

@@ -17,6 +17,7 @@ profileinstaller = "1.4.1"
 ffmpegKit = "8.1.9"
 media3 = "1.11.1"
 acra = "5.14.2"
+apksig = "9.3.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -46,6 +47,7 @@ androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplaye
 androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 androidx-media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 acra-core = { group = "ch.acra", name = "acra-core", version.ref = "acra" }
+apksig = { group = "com.android.tools.build", name = "apksig", version.ref = "apksig" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

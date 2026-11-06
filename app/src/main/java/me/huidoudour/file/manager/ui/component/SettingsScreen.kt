@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -80,6 +81,7 @@ fun SettingsScreen(
     val quickDirs = remember { buildAllQuickDirs() }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showSidebarDialog by remember { mutableStateOf(false) }
+    var showKeystorePage by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     var crashLogs by remember { mutableStateOf<List<CrashLogStore.CrashLog>>(emptyList()) }
@@ -89,6 +91,12 @@ fun SettingsScreen(
     // 读取崩溃日志涉及磁盘 I/O，放到后台线程避免阻塞设置页打开
     LaunchedEffect(Unit) {
         crashLogs = withContext(Dispatchers.IO) { CrashLogStore.list(context) }
+    }
+
+    // 签名密钥管理子页面
+    if (showKeystorePage) {
+        KeystoreScreen(onBack = { showKeystorePage = false })
+        return
     }
 
     Scaffold(
@@ -268,6 +276,47 @@ fun SettingsScreen(
                 Switch(
                     checked = showHidden,
                     onCheckedChange = onShowHiddenChange
+                )
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+
+            // ---- 签名 ----
+            SectionHeader(R.string.settings_section_signing)
+
+            // 签名密钥管理入口 (导入 / 生成 / 导出 / 删除密钥库)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showKeystorePage = true }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.VpnKey,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.settings_keystore_manager),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_keystore_manager_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             HorizontalDivider(

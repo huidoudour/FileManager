@@ -4,6 +4,10 @@
 # For more details, see
 #   https://d.android.com/r/tools/r8/keep-rules
 
+# apksig (com.android.tools.build:apksig): APK 签名实现横跨大量内部辅助类，
+# 全部保留以避免 release 构建裁剪后签名在运行时失败
+-keep class com.android.apksig.** { *; }
+
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
 # class:
