@@ -220,6 +220,7 @@ fun FileItemRow(
     isFavorite: Boolean = false,
     isMenuShown: Boolean = false,
     showThumbnails: Boolean = true,
+    showMenuButton: Boolean = true,
     onNameBounds: ((Rect) -> Unit)? = null,
     onItemClick: () -> Unit,
     onIconClick: () -> Unit = {},
@@ -406,34 +407,36 @@ fun FileItemRow(
             }
         }
 
-        // ======== 右侧三点菜单按钮 ========
-        Box(
-            modifier = Modifier
-                .padding(start = 8.dp, end = 8.dp)
-                .onGloballyPositioned { menuAnchor.buttonLeft = it.boundsInRoot().left }
-        ) {
-            IconButton(
-                onClick = onMenuClick,
-                modifier = Modifier.size(48.dp)
+        // ======== 右侧三点菜单按钮 (多选态下隐藏, 单项操作改由顶栏提供) ========
+        if (showMenuButton) {
+            Box(
+                modifier = Modifier
+                    .padding(start = 8.dp, end = 8.dp)
+                    .onGloballyPositioned { menuAnchor.buttonLeft = it.boundsInRoot().left }
             ) {
-                Icon(
-                    imageVector = Icons.Filled.MoreVert,
-                    contentDescription = stringResource(R.string.more),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                IconButton(
+                    onClick = onMenuClick,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = stringResource(R.string.more),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                FileActionMenu(
+                    expanded = isMenuShown,
+                    // 按下位置在按钮左侧时向左平移菜单, 让长按菜单出现在手指附近;
+                    // 点击三点按钮时偏移为 0, 菜单仍贴在按钮下方。
+                    offsetX = with(density) { menuAnchor.offsetX().toDp() },
+                    item = fileItem,
+                    isFavorite = isFavorite,
+                    isPinned = viewModel.isPinned(fileItem.path),
+                    onAction = onAction,
+                    onDismiss = onMenuDismiss
                 )
             }
-
-            FileActionMenu(
-                expanded = isMenuShown,
-                // 按下位置在按钮左侧时向左平移菜单, 让长按菜单出现在手指附近;
-                // 点击三点按钮时偏移为 0, 菜单仍贴在按钮下方。
-                offsetX = with(density) { menuAnchor.offsetX().toDp() },
-                item = fileItem,
-                isFavorite = isFavorite,
-                isPinned = viewModel.isPinned(fileItem.path),
-                onAction = onAction,
-                onDismiss = onMenuDismiss
-            )
         }
     }
 }

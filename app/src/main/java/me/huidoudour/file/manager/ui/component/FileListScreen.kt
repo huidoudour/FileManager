@@ -162,6 +162,7 @@ fun FileListScreen(
     val sortAscending by viewModel.sortAscending.collectAsState()
     val sortDirectoriesFirst by viewModel.sortDirectoriesFirst.collectAsState()
     val selectedPaths by viewModel.selectedPaths.collectAsState()
+    val selectionMode by viewModel.selectionMode.collectAsState()
     val clipboard by viewModel.clipboard.collectAsState()
     val operationProgress by viewModel.operationProgress.collectAsState()
     val pasteConflicts by viewModel.pasteConflicts.collectAsState()
@@ -197,7 +198,6 @@ fun FileListScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val selectionMode = selectedPaths.isNotEmpty()
     val searching = isSearchActive && searchQuery.isNotBlank()
     val displayedFiles = if (searching) searchResults else files
 
@@ -329,10 +329,18 @@ fun FileListScreen(
         }
     }
 
+    // 多选统计: 已选项中文件夹/文件数量与文件总大小 (文件夹不遍历, 不计入大小)
+    val selectionItems = remember(selectedPaths, displayedFiles) {
+        displayedFiles.filter { it.path in selectedPaths }
+    }
+    val selectionFolderCount = remember(selectionItems) { selectionItems.count { it.isDirectory } }
+    val selectionFileCount = selectionItems.size - selectionFolderCount
+    val selectionSize = remember(selectionItems) {
+        selectionItems.sumOf { if (it.isDirectory) 0L else it.size }
+    }
+
     // 多选模式下唯一选中项 (顶栏收藏按钮状态)
-    val singleSelected = if (selectedPaths.size == 1) {
-        displayedFiles.firstOrNull { it.path in selectedPaths }
-    } else null
+    val singleSelected = selectionItems.singleOrNull()
 
     // FAB 与列表底部留白的显示条件
     val fabVisible = !pickerMode && !saveMode && !selectionMode && !isSearchActive
@@ -592,18 +600,28 @@ fun FileListScreen(
                                     modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                                 ) {
                                     SelectionTopBar(
-                                        count = selectedPaths.size,
-                                        singleSelection = selectedPaths.size == 1,
+                                        folderCount = selectionFolderCount,
+                                        fileCount = selectionFileCount,
+                                        totalSize = selectionSize,
+                                        totalCount = displayedFiles.size,
                                         isFavorite = singleSelected?.let { it.path in favorites } == true,
                                         isDirectory = singleSelected?.isDirectory == true,
                                         onClose = { viewModel.clearSelection() },
+                                        onToggleSelectAll = { viewModel.toggleSelectAll() },
+                                        onInvertSelection = { viewModel.invertSelection() },
                                         onCut = { viewModel.cutToClipboard(viewModel.selectedItems()) },
                                         onCopy = { viewModel.copyToClipboard(viewModel.selectedItems()) },
-                                        onDelete = { deleteTargets = viewModel.selectedItems() },
+                                        onDelete = {
+                                            val targets = viewModel.selectedItems()
+                                            if (targets.isNotEmpty()) deleteTargets = targets
+                                        },
                                         onRename = { renameTarget = viewModel.selectedItems().firstOrNull() },
                                         onShare = {
-                                            onShareFiles?.invoke(viewModel.selectedItems())
-                                            viewModel.clearSelection()
+                                            val targets = viewModel.selectedItems()
+                                            if (targets.isNotEmpty()) {
+                                                onShareFiles?.invoke(targets)
+                                                viewModel.clearSelection()
+                                            }
                                         },
                                         onProperties = {
                                             viewModel.selectedItems().firstOrNull()?.let {
@@ -615,8 +633,7 @@ fun FileListScreen(
                                                 viewModel.toggleFavorite(it.path)
                                             }
                                             viewModel.clearSelection()
-                                        },
-                                        onSelectAll = { viewModel.selectAll() }
+                                        }
                                     )
 
                                     // 多选顶栏补上与普通模式相同的面包屑栏,
@@ -887,6 +904,7 @@ fun FileListScreen(
                                                         isFavorite = fileItem.path in favorites,
                                                         isMenuShown = actionTarget?.path == fileItem.path,
                                                         showThumbnails = showThumbnails,
+                                                        showMenuButton = !selectionMode,
                                                         onNameBounds = { bounds ->
                                                             nameBoundsMap[fileItem.path] = bounds
                                                         },
@@ -927,12 +945,8 @@ fun FileListScreen(
                                                         },
                                                         onItemLongClick = if (pickerMode || saveMode) null else ({
                                                             if (selectionMode) {
-                                                                if (fileItem.isDirectory) {
-                                                                    if (searching) viewModel.closeSearch()
-                                                                    viewModel.navigateToDirectory(fileItem)
-                                                                } else {
-                                                                    onFileSelected?.invoke(fileItem)
-                                                                }
+                                                                // 多选态下长按与点击一致: 切换该行选中, 避免误退出多选
+                                                                viewModel.toggleSelection(fileItem)
                                                             } else {
                                                                 // 长按整行弹出该项的操作菜单 (多选入口在菜单里)
                                                                 actionTarget = fileItem
@@ -1232,30 +1246,86 @@ private fun NormalTopBar(
 // =============================================================================
 @Composable
 private fun SelectionTopBar(
-    count: Int,
-    singleSelection: Boolean,
+    folderCount: Int,
+    fileCount: Int,
+    totalSize: Long,
+    totalCount: Int,
     isFavorite: Boolean,
     isDirectory: Boolean,
     onClose: () -> Unit,
+    onToggleSelectAll: () -> Unit,
+    onInvertSelection: () -> Unit,
     onCut: () -> Unit,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
     onRename: () -> Unit,
     onShare: () -> Unit,
     onProperties: () -> Unit,
-    onToggleFavorite: () -> Unit,
-    onSelectAll: () -> Unit
+    onToggleFavorite: () -> Unit
 ) {
     var showMoreMenu by remember { mutableStateOf(false) }
+    val count = folderCount + fileCount
+    val singleSelection = count == 1
+    val allSelected = totalCount > 0 && count >= totalCount
+
+    // 副标题: 未选中时提示; 否则显示文件夹/文件数量, 有文件时追加文件总大小 (文件夹不遍历)
+    val subtitle = if (count == 0) {
+        stringResource(R.string.selection_hint)
+    } else {
+        val folderText = if (folderCount > 0) {
+            stringResource(R.string.subtitle_folder_count, folderCount)
+        } else null
+        val fileText = if (fileCount > 0) {
+            stringResource(R.string.subtitle_file_count, fileCount)
+        } else null
+        val summary = listOfNotNull(folderText, fileText)
+            .joinToString(stringResource(R.string.subtitle_separator))
+        if (fileCount > 0) {
+            summary + " · " + stringResource(R.string.selected_size, FileItem.formatSize(totalSize))
+        } else {
+            summary
+        }
+    }
+
     TopAppBar(
         title = {
-            Text(
-                text = stringResource(R.string.selected_count, count),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Column {
+                // 标题行: 选中数量 + 全选/全不选 (随状态切换文案)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = stringResource(R.string.selected_count, count),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    // 用可点击文本而非 TextButton: 后者的 48dp 最小高度会超出 64dp 的顶栏
+                    Text(
+                        text = stringResource(
+                            if (allSelected) R.string.select_none else R.string.select_all
+                        ),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (totalCount > 0)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                        maxLines = 1,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(enabled = totalCount > 0, onClick = onToggleSelectAll)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         },
         navigationIcon = {
             IconButton(onClick = onClose) {
@@ -1266,19 +1336,19 @@ private fun SelectionTopBar(
             }
         },
         actions = {
-            IconButton(onClick = onCut) {
+            IconButton(onClick = onCut, enabled = count > 0) {
                 Icon(
                     imageVector = Icons.Filled.ContentCut,
                     contentDescription = stringResource(R.string.action_cut)
                 )
             }
-            IconButton(onClick = onCopy) {
+            IconButton(onClick = onCopy, enabled = count > 0) {
                 Icon(
                     imageVector = Icons.Filled.ContentCopy,
                     contentDescription = stringResource(R.string.action_copy)
                 )
             }
-            IconButton(onClick = onDelete) {
+            IconButton(onClick = onDelete, enabled = count > 0) {
                 Icon(
                     imageVector = Icons.Filled.Delete,
                     contentDescription = stringResource(R.string.action_delete)
@@ -1296,17 +1366,18 @@ private fun SelectionTopBar(
                     onDismissRequest = { showMoreMenu = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.action_rename)) },
-                        enabled = singleSelection,
+                        text = { Text(stringResource(R.string.action_share)) },
+                        enabled = count > 0,
                         onClick = {
-                            onRename()
+                            onShare()
                             showMoreMenu = false
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.action_share)) },
+                        text = { Text(stringResource(R.string.action_rename)) },
+                        enabled = singleSelection,
                         onClick = {
-                            onShare()
+                            onRename()
                             showMoreMenu = false
                         }
                     )
@@ -1337,9 +1408,10 @@ private fun SelectionTopBar(
                     }
                     HorizontalDivider()
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.select_all)) },
+                        text = { Text(stringResource(R.string.invert_selection)) },
+                        enabled = totalCount > 0,
                         onClick = {
-                            onSelectAll()
+                            onInvertSelection()
                             showMoreMenu = false
                         }
                     )

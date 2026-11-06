@@ -55,6 +55,10 @@
     <string name="selected_count">已选 %1$d 项</string>
     <string name="exit_selection">退出多选</string>
     <string name="select_all">全选</string>
+    <string name="select_none">全不选</string>
+    <string name="invert_selection">反选</string>
+    <string name="selection_hint">点击列表项进行选择</string>
+    <string name="selected_size">大小 %1$s</string>
     <string name="properties_single_only">属性 (仅单选可用)</string>
 
     <!-- 搜索 -->
