@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,12 +57,17 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import coil.ImageLoader
@@ -92,6 +99,7 @@ import java.io.File
 //  - 图标: 彩色矢量图标 + 圆形淡色底 (按文件类型显示对应图标)
 //  - 图片/视频显示圆角缩略图; 单 APK 识别成功后显示其应用图标
 //  - 选中时整条显示圆角边框 + 淡色底
+//  - 长按整行弹出操作菜单 (与右侧三点按钮共用同一个菜单, 以按下位置为锚点)
 // =============================================================================
 
 /** 单条文件的长按/菜单操作 */
@@ -189,6 +197,21 @@ private object ApkIconLoader {
     }
 }
 
+/**
+ * 操作菜单的水平锚点信息 (均为 root 坐标, 单位 px)。
+ * [rowLeft] 行左边缘, [pressX] 最近一次按下的位置, [buttonLeft] 三点按钮左边缘;
+ * 三者相减即得到菜单相对按钮的水平偏移, 让长按菜单从手指附近展开。
+ * 使用普通对象保存, 按下/布局写入时不触发重组。
+ */
+private class MenuAnchor {
+    var rowLeft = 0f
+    var pressX = 0f
+    var buttonLeft = 0f
+
+    /** 菜单需要相对三点按钮水平平移的距离 (px), 向右不超过按钮位置 */
+    fun offsetX(): Float = (pressX - buttonLeft).coerceAtMost(0f)
+}
+
 @Composable
 fun FileItemRow(
     fileItem: FileItem,
@@ -213,6 +236,9 @@ fun FileItemRow(
     val iconRipple = remember { ripple(radius = 20.dp) }
     // 选中态: 整条圆角边框 + 淡色底, 比右下角对勾更醒目
     val selectionShape = RoundedCornerShape(12.dp)
+    val density = LocalDensity.current
+    // 长按菜单的锚点: 按下位置 / 三点按钮位置
+    val menuAnchor = remember { MenuAnchor() }
 
     // APK 应用图标: 单 APK 识别成功后显示 (跟随缩略图开关)
     val isApk = category == FileCategory.APK
@@ -239,6 +265,17 @@ fun FileItemRow(
                 }
             )
             .clip(selectionShape)
+            .onGloballyPositioned { menuAnchor.rowLeft = it.boundsInRoot().left }
+            .pointerInput(Unit) {
+                // 仅记录按下位置作为菜单锚点, 不消费事件 (点击/长按仍交给 combinedClickable)
+                awaitEachGesture {
+                    val down = awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = PointerEventPass.Initial
+                    )
+                    menuAnchor.pressX = menuAnchor.rowLeft + down.position.x
+                }
+            }
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
@@ -370,7 +407,11 @@ fun FileItemRow(
         }
 
         // ======== 右侧三点菜单按钮 ========
-        Box(modifier = Modifier.padding(start = 8.dp, end = 8.dp)) {
+        Box(
+            modifier = Modifier
+                .padding(start = 8.dp, end = 8.dp)
+                .onGloballyPositioned { menuAnchor.buttonLeft = it.boundsInRoot().left }
+        ) {
             IconButton(
                 onClick = onMenuClick,
                 modifier = Modifier.size(48.dp)
@@ -384,6 +425,9 @@ fun FileItemRow(
 
             FileActionMenu(
                 expanded = isMenuShown,
+                // 按下位置在按钮左侧时向左平移菜单, 让长按菜单出现在手指附近;
+                // 点击三点按钮时偏移为 0, 菜单仍贴在按钮下方。
+                offsetX = with(density) { menuAnchor.offsetX().toDp() },
                 item = fileItem,
                 isFavorite = isFavorite,
                 isPinned = viewModel.isPinned(fileItem.path),
@@ -394,10 +438,11 @@ fun FileItemRow(
     }
 }
 
-/** 三点按钮弹出的操作菜单 (照搬 MaterialFiles 的 file_item 菜单形态) */
+/** 三点按钮 / 长按整行弹出的操作菜单 (照搬 MaterialFiles 的 file_item 菜单形态) */
 @Composable
 private fun FileActionMenu(
     expanded: Boolean,
+    offsetX: Dp = 0.dp,
     item: FileItem,
     isFavorite: Boolean,
     isPinned: Boolean,
@@ -431,6 +476,7 @@ private fun FileActionMenu(
     DropdownMenu(
         expanded = true,
         onDismissRequest = onDismiss,
+        offset = DpOffset(offsetX, 0.dp),
         shape = RoundedCornerShape(4.dp)
     ) {
         actions.forEach { (labelRes, action) ->

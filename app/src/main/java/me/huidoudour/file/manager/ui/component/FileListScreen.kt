@@ -934,7 +934,8 @@ fun FileListScreen(
                                                                     onFileSelected?.invoke(fileItem)
                                                                 }
                                                             } else {
-                                                                viewModel.toggleSelection(fileItem)
+                                                                // 长按整行弹出该项的操作菜单 (多选入口在菜单里)
+                                                                actionTarget = fileItem
                                                             }
                                                         }),
                                                         onMenuClick = { actionTarget = fileItem },
