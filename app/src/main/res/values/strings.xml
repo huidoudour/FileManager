@@ -55,6 +55,10 @@
     <string name="selected_count">已选 %1$d 项</string>
     <string name="exit_selection">退出多选</string>
     <string name="select_all">全选</string>
+    <string name="select_none">全不选</string>
+    <string name="invert_selection">反选</string>
+    <string name="selection_hint">点击列表项进行选择</string>
+    <string name="selected_size">大小 %1$s</string>
     <string name="properties_single_only">属性 (仅单选可用)</string>
 
     <!-- 搜索 -->
@@ -74,6 +78,8 @@
     <string name="action_unfavorite">取消收藏</string>
     <string name="action_properties">属性</string>
     <string name="action_multi_select">多选</string>
+    <string name="action_open_with">打开方式</string>
+    <string name="action_sign_apk">签名</string>
 
     <!-- 底部导航栏 -->
     <string name="nav_back">上一步</string>
@@ -193,6 +199,73 @@
     <string name="installer_required">请先安装 io.github.huidoudour.Installer 安装器</string>
     <string name="installer_unsupported">io.github.huidoudour.Installer 不支持安装此 APK</string>
     <string name="install_failed">安装失败: %1$s</string>
+
+    <!-- APK 签名 -->
+    <string name="apk_sign_title">APK 签名</string>
+    <string name="apk_sign_key_label">签名密钥</string>
+    <string name="apk_sign_key_loading">正在读取密钥…</string>
+    <string name="apk_sign_key_none">没有可用密钥，请到 设置 → 签名密钥 中添加</string>
+    <string name="apk_sign_key_pick_title">选择签名密钥</string>
+    <string name="apk_sign_builtin_key_warning">该密钥完全公开，仅供测试，请勿用于正式发布。</string>
+    <string name="apk_sign_stage_reading">正在读取 APK…</string>
+    <string name="apk_sign_stage_signing">正在签名…</string>
+    <string name="apk_sign_stage_writing">正在写入输出文件…</string>
+    <string name="apk_sign_start">开始签名</string>
+    <string name="apk_sign_done">完成</string>
+    <string name="apk_sign_success">签名完成，耗时 %1$d ms</string>
+    <string name="apk_sign_output">输出: %1$s</string>
+    <string name="apk_sign_failed">签名失败: %1$s</string>
+    <string name="action_install">安装</string>
+
+    <!-- 签名密钥管理 -->
+    <string name="settings_section_signing">签名</string>
+    <string name="settings_keystore_manager">签名密钥</string>
+    <string name="settings_keystore_manager_desc">管理 APK 签名使用的密钥库</string>
+    <string name="keystore_title">签名密钥</string>
+    <string name="keystore_add">添加密钥</string>
+    <string name="keystore_import">导入密钥库</string>
+    <string name="keystore_import_desc">从文件导入 JKS / PKCS12 / BKS 密钥库</string>
+    <string name="keystore_generate">生成密钥</string>
+    <string name="keystore_generate_desc">在应用内生成新的自签名密钥库</string>
+    <string name="keystore_builtin_name">内置测试密钥 (testkey)</string>
+    <string name="keystore_detail">%1$s · %2$s · %3$s</string>
+    <string name="keystore_storage_tip">密钥库保存在应用私有目录，其他应用无法读取。</string>
+    <string name="keystore_empty">还没有可用密钥</string>
+    <string name="keystore_working">正在处理…</string>
+    <string name="keystore_export">导出</string>
+    <string name="keystore_export_success">密钥库已导出</string>
+    <string name="keystore_export_failed">导出失败: %1$s</string>
+    <string name="keystore_delete_title">删除密钥</string>
+    <string name="keystore_delete_message">确定删除「%1$s」？对应的密钥库文件也会一并移除。</string>
+    <string name="keystore_file_missing">密钥库文件不存在</string>
+    <string name="keystore_required">请填写必填项</string>
+    <string name="keystore_import_title">导入密钥库</string>
+    <string name="keystore_import_tip">支持 JKS / PKCS12 / BKS；密码只保存在本机配置中。</string>
+    <string name="keystore_pick_file">选择密钥库文件</string>
+    <string name="keystore_pick_file_first">请先选择密钥库文件</string>
+    <string name="keystore_store_password">密钥库密码</string>
+    <string name="keystore_key_password">别名密码</string>
+    <string name="keystore_config_name">配置名称</string>
+    <string name="keystore_alias">别名</string>
+    <string name="keystore_load_aliases">读取别名</string>
+    <string name="keystore_load_aliases_first">请先读取别名</string>
+    <string name="keystore_load_success">已识别格式: %1$s</string>
+    <string name="keystore_load_failed">读取失败: %1$s</string>
+    <string name="keystore_no_key_alias">该密钥库没有私钥条目</string>
+    <string name="keystore_verify_failed">校验失败: %1$s</string>
+    <string name="keystore_import_success">密钥库已导入</string>
+    <string name="keystore_generate_title">生成密钥</string>
+    <string name="keystore_password">密码</string>
+    <string name="keystore_cn">通用名称 (CN)</string>
+    <string name="keystore_organization">组织 (O)</string>
+    <string name="keystore_ou">组织单元 (OU)</string>
+    <string name="keystore_validity_years">有效期（年）</string>
+    <string name="keystore_validity_invalid">有效期需为 1-100 的整数</string>
+    <string name="keystore_algorithm">算法</string>
+    <string name="keystore_algorithm_value">%1$s: %2$s</string>
+    <string name="keystore_generating">正在生成密钥…</string>
+    <string name="keystore_generate_success">密钥已生成</string>
+    <string name="keystore_generate_failed">生成失败: %1$s</string>
 
     <!-- 设置页 -->
     <string name="settings">设置</string>

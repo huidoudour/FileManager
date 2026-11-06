@@ -131,6 +131,14 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     private val _selectedPaths = MutableStateFlow<Set<String>>(emptySet())
     val selectedPaths: StateFlow<Set<String>> = _selectedPaths.asStateFlow()
 
+    /**
+     * 多选态: 与选中集合分离。
+     * 取消最后一个勾选时不再退出多选, 顶栏与列表布局因此不会跳动;
+     * 只有返回键 / 关闭按钮 / 完成一次批量操作才退出。
+     */
+    private val _selectionMode = MutableStateFlow(false)
+    val selectionMode: StateFlow<Boolean> = _selectionMode.asStateFlow()
+
     /** 剪贴板 */
     private val _clipboard = MutableStateFlow<ClipboardData?>(null)
     val clipboard: StateFlow<ClipboardData?> = _clipboard.asStateFlow()
@@ -365,6 +373,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 _files.value = FileSortUtil.sort(
                     fileList, _sortMode.value, _sortAscending.value, _sortDirectoriesFirst.value
                 )
+                pruneSelection()
                 saveCurrentPath()
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: str(R.string.unknown_error)
@@ -551,17 +560,49 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         else _files.value
 
     fun toggleSelection(item: FileItem) {
+        _selectionMode.value = true
         _selectedPaths.value = _selectedPaths.value.toMutableSet().apply {
             if (!add(item.path)) remove(item.path)
         }
     }
 
+    /** 全选当前列表 (空目录不进入多选态) */
     fun selectAll() {
-        _selectedPaths.value = displayedList().map { it.path }.toSet()
+        val all = displayedList().map { it.path }.toSet()
+        if (all.isEmpty()) return
+        _selectionMode.value = true
+        _selectedPaths.value = all
     }
 
+    /** 全选 / 全不选: 当前列表已全选时改为清空选中 (仍留在多选态) */
+    fun toggleSelectAll() {
+        val all = displayedList().map { it.path }.toSet()
+        if (all.isEmpty()) return
+        _selectionMode.value = true
+        _selectedPaths.value = if (all.all { it in _selectedPaths.value }) emptySet() else all
+    }
+
+    /** 反选当前列表 */
+    fun invertSelection() {
+        val all = displayedList().map { it.path }.toSet()
+        if (all.isEmpty()) return
+        _selectionMode.value = true
+        val selected = _selectedPaths.value
+        _selectedPaths.value = all.filterNotTo(mutableSetOf()) { it in selected }
+    }
+
+    /** 退出多选并清空选中 */
     fun clearSelection() {
+        _selectionMode.value = false
         _selectedPaths.value = emptySet()
+    }
+
+    /** 丢弃已不在当前列表中的选中项 (刷新后文件被外部删除等情况) */
+    private fun pruneSelection() {
+        if (_selectedPaths.value.isEmpty()) return
+        val valid = displayedList().mapTo(HashSet()) { it.path }
+        if (_selectedPaths.value.all { it in valid }) return
+        _selectedPaths.value = _selectedPaths.value.filterTo(mutableSetOf()) { it in valid }
     }
 
     /** 当前选中的 FileItem 列表 */

@@ -116,6 +116,8 @@ class MainActivity : ComponentActivity() {
                         shareFiles(files)
                     },
                     onOpenWith = ::openFile,
+                    onOpenWithChooser = ::openWith,
+                    onInstallApk = { file -> installApk(file) },
                     onExitApp = {
                         // 主动退出：与返回调用方一致，整体向右滑出
                         finishWithSlideBack()
@@ -423,6 +425,42 @@ class MainActivity : ComponentActivity() {
             } else {
                 Toast.makeText(this, getString(R.string.no_app_to_open), Toast.LENGTH_SHORT).show()
             }
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                getString(R.string.open_file_failed, e.message ?: ""),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /**
+     * 打开方式: 弹出系统应用选择器, 让用户自行挑选处理该文件的应用。
+     * 与点击直接打开 (openFile) 的区别是不走默认应用, 也不把 APK 固定交给安装器。
+     */
+    private fun openWith(fileItem: FileItem) {
+        if (fileItem.isDirectory) return
+        val file = File(fileItem.path)
+        if (!file.isFile) {
+            Toast.makeText(this, getString(R.string.file_not_found), Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val uri: Uri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.fileprovider",
+                file
+            )
+            val mimeType = me.huidoudour.file.manager.util.FileTypeUtil.getMimeType(fileItem)
+            val target = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mimeType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            // chooser 本身也带读权限标记, 避免部分系统版本在选择后丢失授权
+            val chooser = Intent.createChooser(target, getString(R.string.action_open_with)).apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(chooser)
         } catch (e: Exception) {
             Toast.makeText(
                 this,

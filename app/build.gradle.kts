@@ -8,9 +8,9 @@ plugins {
 }
 
 // ── Git 版本控制 ──
-val backVersionCode = 20
-val baseVersionCode = 10
-val baseVersionName = "26.10.18"
+val backVersionCode = 129
+val baseVersionCode = 11
+val baseVersionName = "26.11.06"
 
 fun Project.gitCommitCount(): Int = try {
     providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
@@ -95,6 +95,16 @@ android {
         compose = true
         buildConfig = true
     }
+    packaging {
+        resources {
+            // apksig 等 JVM 库自带的多版本/协议文件对 Android 无意义，避免打包冲突
+            excludes += setOf(
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/versions/**"
+            )
+        }
+    }
     lint {
         warningsAsErrors = false
         abortOnError = true
@@ -152,6 +162,9 @@ dependencies {
     implementation(libs.dev.ffmpegkit.min)
 
     implementation(libs.acra.core)
+    implementation(libs.apksig)
     //implementation(files("deps/xcrash-android-lib.aar"))
     implementation(project(":xCrash"))
+
+    testImplementation(libs.junit)
 }
