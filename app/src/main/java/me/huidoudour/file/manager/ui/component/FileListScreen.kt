@@ -961,7 +961,7 @@ fun FileListScreen(
                                                                 // 多选态下长按与点击一致: 切换该行选中, 避免误退出多选
                                                                 viewModel.toggleSelection(fileItem)
                                                             } else {
-                                                                // 长按整行弹出该项的操作菜单 (多选入口在菜单里)
+                                                                // 长按整行弹出该项的操作菜单 (多选通过点击图标或顶栏"全选"进入)
                                                                 actionTarget = fileItem
                                                             }
                                                         }),
@@ -991,8 +991,6 @@ fun FileListScreen(
                                                                     viewModel.refreshFolderSize(fileItem.path)
                                                                 FileAction.PROPERTIES ->
                                                                     viewModel.showProperties(fileItem)
-                                                                FileAction.MULTI_SELECT ->
-                                                                    viewModel.toggleSelection(fileItem)
                                                             }
                                                             actionTarget = null
                                                         }
@@ -1307,34 +1305,14 @@ private fun SelectionTopBar(
     TopAppBar(
         title = {
             Column {
-                // 标题行: 选中数量 + 全选/全不选 (随状态切换文案)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = stringResource(R.string.selected_count, count),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    // 用可点击文本而非 TextButton: 后者的 48dp 最小高度会超出 64dp 的顶栏
-                    Text(
-                        text = stringResource(
-                            if (allSelected) R.string.select_none else R.string.select_all
-                        ),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (totalCount > 0)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                        maxLines = 1,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable(enabled = totalCount > 0, onClick = onToggleSelectAll)
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
+                // 标题行: 仅显示选中数量, 全选/全不选收进右侧更多菜单
+                Text(
+                    text = stringResource(R.string.selected_count, count),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
@@ -1424,6 +1402,20 @@ private fun SelectionTopBar(
                         )
                     }
                     HorizontalDivider()
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(
+                                    if (allSelected) R.string.select_none else R.string.select_all
+                                )
+                            )
+                        },
+                        enabled = totalCount > 0,
+                        onClick = {
+                            onToggleSelectAll()
+                            showMoreMenu = false
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.invert_selection)) },
                         enabled = totalCount > 0,

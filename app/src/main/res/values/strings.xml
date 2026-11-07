@@ -77,7 +77,6 @@
     <string name="action_favorite">收藏</string>
     <string name="action_unfavorite">取消收藏</string>
     <string name="action_properties">属性</string>
-    <string name="action_multi_select">多选</string>
     <string name="action_open_with">打开方式</string>
     <string name="action_sign_apk">签名</string>
 

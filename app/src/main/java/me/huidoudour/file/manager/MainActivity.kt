@@ -7,7 +7,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Process
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -28,7 +30,9 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.system.exitProcess
 import me.huidoudour.file.manager.model.FileItem
+import me.huidoudour.file.manager.playback.AudioPlaybackService
 import me.huidoudour.file.manager.ui.component.CrashReportDialog
 import me.huidoudour.file.manager.ui.component.FileListScreen
 import me.huidoudour.file.manager.ui.theme.FileManagerTheme
@@ -42,6 +46,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var viewModel: FileManagerViewModel
     private var isPickerMode = false
     private var isSaveMode = false
+
+    /** 是否正在执行"彻底退出"流程 (onDestroy 时据此结束进程) */
+    private var exitingCompletely = false
 
     /**
      * 待打开的音频播放界面请求 (点击系统媒体通知回到应用时设置)；
@@ -119,8 +126,8 @@ class MainActivity : ComponentActivity() {
                     onOpenWithChooser = ::openWith,
                     onInstallApk = { file -> installApk(file) },
                     onExitApp = {
-                        // 主动退出：与返回调用方一致，整体向右滑出
-                        finishWithSlideBack()
+                        // 主动退出: 关闭界面后终止进程, 不留后台服务/内存占用
+                        exitAppCompletely()
                     }
                 )
 
@@ -335,7 +342,48 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * 彻底退出应用: 停止后台媒体服务 → 关闭界面并移除任务栈 → 在 onDestroy 中终止进程。
+     *
+     * 与 [finishWithSlideBack] 的区别: 后者只关闭当前界面, 进程仍可能被媒体前台服务等
+     * 组件保活; 这里连进程一起结束。
+     *
+     * 终止进程放在 [onDestroy] 而不是延迟消息里: 界面关闭后进程可能立刻进入缓存并被
+     * 系统冻结, 延迟任务不一定还会执行, 会出现"退出时灵时不灵"。
+     */
+    private fun exitAppCompletely() {
+        if (exitingCompletely) return
+        exitingCompletely = true
+        Log.i(TAG, "exit requested: stop media service and remove task")
+        // 先停掉媒体服务, 避免前台服务与媒体通知让进程继续存活
+        runCatching { stopService(Intent(this, AudioPlaybackService::class.java)) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(
+                OVERRIDE_TRANSITION_CLOSE,
+                R.anim.slide_in_left,
+                R.anim.slide_out_right
+            )
+            finishAndRemoveTask()
+        } else {
+            finishAndRemoveTask()
+            @Suppress("DEPRECATION")
+            overridePendingTransition(R.anim.slide_in_left, R.anim.slide_out_right)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // 彻底退出: 界面销毁回调里直接结束自身进程 (确定性执行, 不依赖延迟任务)
+        if (exitingCompletely) {
+            Log.i(TAG, "kill process ${Process.myPid()} for exit")
+            Process.killProcess(Process.myPid())
+            exitProcess(0)
+        }
+    }
+
     companion object {
+        private const val TAG = "MainActivity"
+
         /** APK 安装器包名 */
         private const val INSTALLER_PACKAGE = "io.github.huidoudour.Installer"
 

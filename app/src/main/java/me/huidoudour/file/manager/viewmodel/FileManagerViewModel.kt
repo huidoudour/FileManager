@@ -560,35 +560,33 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         else _files.value
 
     fun toggleSelection(item: FileItem) {
-        _selectionMode.value = true
-        _selectedPaths.value = _selectedPaths.value.toMutableSet().apply {
-            if (!add(item.path)) remove(item.path)
-        }
+        updateSelection(
+            _selectedPaths.value.toMutableSet().apply {
+                if (!add(item.path)) remove(item.path)
+            }
+        )
     }
 
     /** 全选当前列表 (空目录不进入多选态) */
     fun selectAll() {
         val all = displayedList().map { it.path }.toSet()
         if (all.isEmpty()) return
-        _selectionMode.value = true
-        _selectedPaths.value = all
+        updateSelection(all)
     }
 
-    /** 全选 / 全不选: 当前列表已全选时改为清空选中 (仍留在多选态) */
+    /** 全选 / 全不选: 当前列表已全选时改为清空选中 (清空后自动退出多选态) */
     fun toggleSelectAll() {
         val all = displayedList().map { it.path }.toSet()
         if (all.isEmpty()) return
-        _selectionMode.value = true
-        _selectedPaths.value = if (all.all { it in _selectedPaths.value }) emptySet() else all
+        updateSelection(if (all.all { it in _selectedPaths.value }) emptySet() else all)
     }
 
-    /** 反选当前列表 */
+    /** 反选当前列表 (反选后为空则自动退出多选态) */
     fun invertSelection() {
         val all = displayedList().map { it.path }.toSet()
         if (all.isEmpty()) return
-        _selectionMode.value = true
         val selected = _selectedPaths.value
-        _selectedPaths.value = all.filterNotTo(mutableSetOf()) { it in selected }
+        updateSelection(all.filterNotTo(mutableSetOf()) { it in selected })
     }
 
     /** 退出多选并清空选中 */
@@ -597,12 +595,18 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         _selectedPaths.value = emptySet()
     }
 
+    /** 更新选中集合并同步多选态: 选中数量归零时自动退出多选 */
+    private fun updateSelection(paths: Set<String>) {
+        _selectedPaths.value = paths
+        _selectionMode.value = paths.isNotEmpty()
+    }
+
     /** 丢弃已不在当前列表中的选中项 (刷新后文件被外部删除等情况) */
     private fun pruneSelection() {
         if (_selectedPaths.value.isEmpty()) return
         val valid = displayedList().mapTo(HashSet()) { it.path }
         if (_selectedPaths.value.all { it in valid }) return
-        _selectedPaths.value = _selectedPaths.value.filterTo(mutableSetOf()) { it in valid }
+        updateSelection(_selectedPaths.value.filterTo(mutableSetOf()) { it in valid })
     }
 
     /** 当前选中的 FileItem 列表 */

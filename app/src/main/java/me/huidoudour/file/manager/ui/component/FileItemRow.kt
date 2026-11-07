@@ -114,8 +114,7 @@ enum class FileAction(val labelRes: Int) {
     FAVORITE(R.string.action_favorite),
     PIN_SIZE(R.string.action_pin_size),
     REFRESH_SIZE(R.string.action_refresh_size),
-    PROPERTIES(R.string.action_properties),
-    MULTI_SELECT(R.string.action_multi_select)
+    PROPERTIES(R.string.action_properties)
 }
 
 /** 缩略图 ImageLoader 单例 (支持视频帧) */
@@ -457,18 +456,19 @@ private fun FileActionMenu(
     if (!expanded) return
 
     val actions = buildList {
-        // 文件专属入口: 打开方式; APK 额外提供签名 (交给 ApkSign 的分享签名对话框)
+        // 顺序: 剪切、复制、重命名、删除、分享、打开方式(仅文件)、属性, 最后是多选
+        add(FileAction.CUT.labelRes to FileAction.CUT)
+        add(FileAction.COPY.labelRes to FileAction.COPY)
+        add(FileAction.RENAME.labelRes to FileAction.RENAME)
+        add(FileAction.DELETE.labelRes to FileAction.DELETE)
         if (!item.isDirectory) {
+            add(FileAction.SHARE.labelRes to FileAction.SHARE)
+            // 打开方式紧跟分享; APK 额外提供签名 (交给 ApkSign 的分享签名对话框)
             add(FileAction.OPEN_WITH.labelRes to FileAction.OPEN_WITH)
             if (item.extension.equals("apk", ignoreCase = true)) {
                 add(FileAction.SIGN_APK.labelRes to FileAction.SIGN_APK)
             }
         }
-        add(FileAction.CUT.labelRes to FileAction.CUT)
-        add(FileAction.COPY.labelRes to FileAction.COPY)
-        add(FileAction.DELETE.labelRes to FileAction.DELETE)
-        add(FileAction.RENAME.labelRes to FileAction.RENAME)
-        if (!item.isDirectory) add(FileAction.SHARE.labelRes to FileAction.SHARE)
         if (item.isDirectory) {
             add(
                 (if (isFavorite) R.string.action_unfavorite else R.string.action_favorite)
@@ -482,7 +482,6 @@ private fun FileActionMenu(
             }
         }
         add(FileAction.PROPERTIES.labelRes to FileAction.PROPERTIES)
-        add(FileAction.MULTI_SELECT.labelRes to FileAction.MULTI_SELECT)
     }
 
     DropdownMenu(
