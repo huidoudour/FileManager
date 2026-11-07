@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -304,11 +303,17 @@ fun PropertiesDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Filled.Info, contentDescription = null) },
-        title = { Text(stringResource(R.string.action_properties)) },
+        // 标题直接显示文件/文件夹名称 (不再展示图标与重复的"名称"行)
+        title = {
+            Text(
+                text = item.name,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        },
         text = {
             Column {
-                PropertyRow(stringResource(R.string.name), item.name)
                 PropertyRow(stringResource(R.string.prop_path), item.path)
                 PropertyRow(
                     stringResource(R.string.prop_type),

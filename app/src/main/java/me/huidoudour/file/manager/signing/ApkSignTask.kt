@@ -3,6 +3,7 @@ package me.huidoudour.file.manager.signing
 import android.content.Context
 import android.os.Environment
 import com.android.apksig.ApkSigner
+import com.android.apksig.KeyConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -46,8 +47,9 @@ object ApkSignTask {
             source.copyTo(tempIn, overwrite = true)
 
             notifyStage(onStage, SignStage.SIGNING)
+            // apksig 9.x 起私钥需通过 KeyConfig 传入 (本地私钥用 KeyConfig.Jca 包装)
             val signerConfig = ApkSigner.SignerConfig.Builder(
-                identity.alias, identity.privateKey, identity.certificates
+                identity.alias, KeyConfig.Jca(identity.privateKey), identity.certificates
             ).build()
             ApkSigner.Builder(listOf(signerConfig))
                 .setInputApk(tempIn)

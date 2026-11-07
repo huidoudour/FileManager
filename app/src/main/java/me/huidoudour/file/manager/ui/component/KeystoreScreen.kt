@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -39,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -59,7 +61,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -414,8 +415,9 @@ private fun ImportKeystoreDialog(
 
     var pickedFile by remember { mutableStateOf<File?>(null) }
     var pickedName by remember { mutableStateOf<String?>(null) }
-    var storePassword by remember { mutableStateOf("") }
-    var keyPassword by remember { mutableStateOf("") }
+    // 密码用 TextFieldState 承载, 交给 OutlinedSecureTextField (旧的 visualTransformation 方案已废弃)
+    val storePasswordState = rememberTextFieldState()
+    val keyPasswordState = rememberTextFieldState()
     var configName by remember { mutableStateOf("") }
     var aliases by remember { mutableStateOf<List<String>>(emptyList()) }
     var alias by remember { mutableStateOf<String?>(null) }
@@ -465,7 +467,8 @@ private fun ImportKeystoreDialog(
             error = context.getString(R.string.keystore_pick_file_first)
             return
         }
-        if (storePassword.isEmpty()) {
+        val storePwd = storePasswordState.text.toString()
+        if (storePwd.isEmpty()) {
             error = context.getString(R.string.keystore_required)
             return
         }
@@ -475,7 +478,7 @@ private fun ImportKeystoreDialog(
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    val result = KeystoreHelper.load(file, storePassword.toCharArray())
+                    val result = KeystoreHelper.load(file, storePwd.toCharArray())
                     result to result.keyAliases()
                 }
                 if (result.second.isEmpty()) {
@@ -518,12 +521,15 @@ private fun ImportKeystoreDialog(
         }
         busy = true
         error = null
+        // 在主线程取出密码快照, 供 IO 线程校验与入库使用
+        val storePwd = storePasswordState.text.toString()
+        val keyPwd = keyPasswordState.text.toString()
         scope.launch {
             try {
                 withContext(Dispatchers.IO) {
                     // 以当前密码重新加载并校验别名密码能取出私钥，再复制文件入库
-                    val verified = KeystoreHelper.load(file, storePassword.toCharArray())
-                    verified.getSigner(selectedAlias, keyPassword.toCharArray())
+                    val verified = KeystoreHelper.load(file, storePwd.toCharArray())
+                    verified.getSigner(selectedAlias, keyPwd.toCharArray())
                     val fileName = file.inputStream().use {
                         repository.importKeystoreFile(it, pickedName)
                     }
@@ -532,9 +538,9 @@ private fun ImportKeystoreDialog(
                             name = configName.trim(),
                             fileName = fileName,
                             type = verified.type,
-                            storePassword = storePassword,
+                            storePassword = storePwd,
                             keyAlias = selectedAlias,
-                            keyPassword = keyPassword
+                            keyPassword = keyPwd
                         )
                     )
                 }
@@ -576,12 +582,9 @@ private fun ImportKeystoreDialog(
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = storePassword,
-                    onValueChange = { storePassword = it },
+                OutlinedSecureTextField(
+                    state = storePasswordState,
                     label = { Text(stringResource(R.string.keystore_store_password)) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -641,12 +644,9 @@ private fun ImportKeystoreDialog(
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = keyPassword,
-                        onValueChange = { keyPassword = it },
+                    OutlinedSecureTextField(
+                        state = keyPasswordState,
                         label = { Text(stringResource(R.string.keystore_key_password)) },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
                         enabled = !busy,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -700,7 +700,8 @@ private fun GenerateKeyDialog(
 
     var configName by remember { mutableStateOf("") }
     var alias by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    // 密码用 TextFieldState 承载, 交给 OutlinedSecureTextField (旧的 visualTransformation 方案已废弃)
+    val passwordState = rememberTextFieldState()
     var commonName by remember { mutableStateOf("") }
     var organization by remember { mutableStateOf("") }
     var organizationalUnit by remember { mutableStateOf("") }
@@ -711,7 +712,8 @@ private fun GenerateKeyDialog(
     var error by remember { mutableStateOf<String?>(null) }
 
     fun confirm() {
-        if (configName.isBlank() || alias.isBlank() || password.isEmpty() || commonName.isBlank()) {
+        val pwd = passwordState.text.toString()
+        if (configName.isBlank() || alias.isBlank() || pwd.isEmpty() || commonName.isBlank()) {
             error = context.getString(R.string.keystore_required)
             return
         }
@@ -728,7 +730,7 @@ private fun GenerateKeyDialog(
                     val fileName = KeyGenHelper.generate(
                         keystoreDir = repository.keystoreDir,
                         alias = alias.trim(),
-                        password = password.toCharArray(),
+                        password = pwd.toCharArray(),
                         algorithm = algorithm,
                         cn = commonName.trim(),
                         o = organization.trim(),
@@ -740,9 +742,9 @@ private fun GenerateKeyDialog(
                             name = configName.trim(),
                             fileName = fileName,
                             type = KeystoreHelper.TYPE_PKCS12,
-                            storePassword = password,
+                            storePassword = pwd,
                             keyAlias = alias.trim(),
-                            keyPassword = password
+                            keyPassword = pwd
                         )
                     )
                 }
@@ -784,12 +786,9 @@ private fun GenerateKeyDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
+                OutlinedSecureTextField(
+                    state = passwordState,
                     label = { Text(stringResource(R.string.keystore_password)) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth()
                 )
