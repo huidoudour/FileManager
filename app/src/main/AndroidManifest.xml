@@ -74,6 +74,14 @@
                 <data android:mimeType="*/*" />
             </intent-filter>
 
+            <!-- 新建/导出文件：接收其他 App 的 CREATE_DOCUMENT 请求 -->
+            <intent-filter>
+                <action android:name="android.intent.action.CREATE_DOCUMENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+
             <!-- 选取图片 -->
             <intent-filter>
                 <action android:name="android.intent.action.OPEN_DOCUMENT" />

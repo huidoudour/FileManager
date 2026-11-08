@@ -64,6 +64,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     companion object {
         /** 存储根路径 */
         val storageRoot: String = Environment.getExternalStorageDirectory().absolutePath
+        /** 新建文档模式下未提供文件名时的默认名称 */
+        private const val DEFAULT_DOCUMENT_NAME = "untitled"
         /** 日期格式化 */
         @SuppressLint("ConstantLocale")
         private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
@@ -233,6 +235,14 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     private val _saveFileCount = MutableStateFlow(0)
     val saveFileCount: StateFlow<Int> = _saveFileCount.asStateFlow()
 
+    /** 是否处于新建文档模式 (其他 App 通过 ACTION_CREATE_DOCUMENT 导出文件) */
+    private val _createDocumentMode = MutableStateFlow(false)
+    val createDocumentMode: StateFlow<Boolean> = _createDocumentMode.asStateFlow()
+
+    /** 新建文档模式下调用方建议的文件名 */
+    private val _createDocumentName = MutableStateFlow("")
+    val createDocumentName: StateFlow<String> = _createDocumentName.asStateFlow()
+
     init {
         // 主线程仅派发，I/O 完全在后台
         viewModelScope.launch(Dispatchers.IO) {
@@ -260,6 +270,43 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         _saveData = SaveData(uris, textContent)
         _saveFileCount.value = uris.size + (if (!textContent.isNullOrBlank()) 1 else 0)
         _saveMode.value = true
+    }
+
+    /**
+     * 进入新建文档模式 (ACTION_CREATE_DOCUMENT)：
+     * 复用保存模式的目录选择交互，由调用方随后在选定目录创建文件并回传 URI。
+     */
+    fun enterCreateDocumentMode(suggestedName: String) {
+        // 只保留文件名部分，避免调用方传入路径分隔符导致在子目录创建
+        val safeName = suggestedName
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .ifBlank { DEFAULT_DOCUMENT_NAME }
+        _createDocumentName.value = safeName
+        _createDocumentMode.value = true
+        _saveMode.value = true
+    }
+
+    /** 退出新建文档模式 */
+    fun exitCreateDocumentMode() {
+        _createDocumentMode.value = false
+        _createDocumentName.value = ""
+        clearSaveData()
+    }
+
+    /**
+     * 在当前浏览目录创建待写入的空文件 (重名自动加序号)。
+     * @return 创建成功的文件；目录不可写或创建失败时返回 null
+     */
+    suspend fun createDocumentInCurrentDir(): File? = withContext(Dispatchers.IO) {
+        val dir = File(_currentPath.value)
+        if (!dir.isDirectory || !dir.canWrite()) return@withContext null
+        try {
+            val file = resolveDestFile(dir, _createDocumentName.value.ifBlank { DEFAULT_DOCUMENT_NAME })
+            if (file.createNewFile() || file.isFile) file else null
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**

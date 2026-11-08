@@ -185,6 +185,7 @@
     <string name="save_failed">保存失败: %1$s</string>
     <string name="save_files_count">%1$d 个文件待保存</string>
     <string name="save_text_as_file">文本内容</string>
+    <string name="create_document_hint">导出文件到此处</string>
 
     <!-- MainActivity -->
     <string name="permission_granted">权限已授予</string>

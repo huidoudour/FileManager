@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var viewModel: FileManagerViewModel
     private var isPickerMode = false
     private var isSaveMode = false
+    private var isCreateDocumentMode = false
 
     /** 是否正在执行"彻底退出"流程 (onDestroy 时据此结束进程) */
     private var exitingCompletely = false
@@ -112,12 +113,16 @@ class MainActivity : ComponentActivity() {
                         finishWithSlideBack()
                     },
                     onSaveConfirmed = {
-                        performFileSave()
+                        if (isCreateDocumentMode) performCreateDocument() else performFileSave()
                     },
                     onSaveCancelled = {
-                        viewModel.clearSaveData()
-                        setResult(RESULT_CANCELED)
-                        finishWithSlideBack()
+                        if (isCreateDocumentMode) {
+                            cancelCreateDocument()
+                        } else {
+                            viewModel.clearSaveData()
+                            setResult(RESULT_CANCELED)
+                            finishWithSlideBack()
+                        }
                     },
                     onShareFiles = { files ->
                         shareFiles(files)
@@ -133,8 +138,8 @@ class MainActivity : ComponentActivity() {
 
                 // 启动时异步读取最近一次未提示的崩溃报告 (ACRA 在崩溃时落盘)
                 LaunchedEffect(Unit) {
-                    // 被其他应用调起选取/保存文件时不打断调用方
-                    if (isPickerMode || isSaveMode) return@LaunchedEffect
+                    // 被其他应用调起选取/保存/新建文件时不打断调用方
+                    if (isPickerMode || isSaveMode || isCreateDocumentMode) return@LaunchedEffect
                     pendingCrashReport = withContext(Dispatchers.IO) {
                         CrashLogStore.latestUnseen(this@MainActivity)
                     }
@@ -175,12 +180,28 @@ class MainActivity : ComponentActivity() {
                     isPickerMode = true
                     viewModel.setPickerMode(true)
                 }
+                Intent.ACTION_CREATE_DOCUMENT -> {
+                    handleCreateDocumentIntent(it)
+                }
                 ACTION_OPEN_PLAYER -> {
                     // 系统媒体通知：回到应用并重新打开音频播放界面
                     requestOpenAudioPlayer()
                 }
             }
         }
+    }
+
+    /**
+     * 处理 ACTION_CREATE_DOCUMENT：其他 App 想通过本文件管理器选择导出位置。
+     * 以调用方建议的文件名进入新建文档模式，用户选定目录后再创建文件并回传 URI。
+     */
+    private fun handleCreateDocumentIntent(intent: Intent) {
+        isCreateDocumentMode = true
+        isSaveMode = true
+        val suggestedName = intent.getStringExtra(Intent.EXTRA_TITLE)
+            ?: intent.data?.lastPathSegment
+            ?: "untitled"
+        viewModel.enterCreateDocumentMode(suggestedName)
     }
 
     /**
@@ -317,6 +338,68 @@ class MainActivity : ComponentActivity() {
                 finishWithSlideBack()
             }
         }
+    }
+
+    /**
+     * 执行新建文档 (ACTION_CREATE_DOCUMENT)：在当前浏览目录创建文件，
+     * 并把带读写授权的 URI 回传给调用方。
+     */
+    private fun performCreateDocument() {
+        viewModel.viewModelScope.launch {
+            val file = viewModel.createDocumentInCurrentDir()
+            viewModel.exitCreateDocumentMode()
+            if (file == null) {
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.save_failed, ""),
+                    Toast.LENGTH_SHORT
+                ).show()
+                setResult(RESULT_CANCELED)
+                finishWithSlideBack()
+                return@launch
+            }
+            try {
+                val uri = FileProvider.getUriForFile(
+                    this@MainActivity,
+                    "${packageName}.fileprovider",
+                    file
+                )
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                // 结果 Intent 的授权标记在部分 ROM 上不会自动生效，这里显式授权给调用方
+                callingActivity?.packageName?.let { caller ->
+                    grantUriPermission(caller, uri, flags)
+                }
+                val resultIntent = Intent().apply {
+                    data = uri
+                    addFlags(flags)
+                }
+                setResult(RESULT_OK, resultIntent)
+                viewModel.refresh()
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.created_item, file.name),
+                    Toast.LENGTH_SHORT
+                ).show()
+            } catch (_: Exception) {
+                // URI 生成失败时删除刚创建的空文件，避免留下无效文件
+                file.delete()
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.create_failed),
+                    Toast.LENGTH_SHORT
+                ).show()
+                setResult(RESULT_CANCELED)
+            }
+            finishWithSlideBack()
+        }
+    }
+
+    /** 取消新建文档 (ACTION_CREATE_DOCUMENT) */
+    private fun cancelCreateDocument() {
+        viewModel.exitCreateDocumentMode()
+        setResult(RESULT_CANCELED)
+        finishWithSlideBack()
     }
 
     /**

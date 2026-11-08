@@ -14,6 +14,7 @@
 - 显示/隐藏隐藏文件、文件属性详情
 - 分享文件到其他应用
 - 支持被其他 App 调起选取文件（`GET_CONTENT` / `OPEN_DOCUMENT` / `PICK`）
+- 支持被其他 App 调起新建/导出文件（`CREATE_DOCUMENT`）
 - APK 通过 `io.github.huidoudour.Installer` 安装
 
 ## 技术栈

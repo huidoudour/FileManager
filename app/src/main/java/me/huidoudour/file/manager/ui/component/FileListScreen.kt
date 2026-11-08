@@ -184,6 +184,8 @@ fun FileListScreen(
     val saveFileCount by viewModel.saveFileCount.collectAsState()
     val pickerMode by viewModel.pickerMode.collectAsState()
     val saveMode by viewModel.saveMode.collectAsState()
+    val createDocumentMode by viewModel.createDocumentMode.collectAsState()
+    val createDocumentName by viewModel.createDocumentName.collectAsState()
     val canGoBack by viewModel.canGoBack.collectAsState()
     val canGoForward by viewModel.canGoForward.collectAsState()
 
@@ -737,12 +739,24 @@ fun FileListScreen(
                                 }
 
                                 AnimatedVisibility(
-                                    visible = saveMode && saveFileCount > 0,
+                                    visible = saveMode && saveFileCount > 0 && !createDocumentMode,
                                     enter = fadeIn(),
                                     exit = fadeOut()
                                 ) {
                                     SaveModeBar(
                                         fileCount = saveFileCount,
+                                        onSave = { onSaveConfirmed?.invoke() },
+                                        onCancel = { onSaveCancelled?.invoke() }
+                                    )
+                                }
+
+                                AnimatedVisibility(
+                                    visible = createDocumentMode,
+                                    enter = fadeIn(),
+                                    exit = fadeOut()
+                                ) {
+                                    CreateDocumentBar(
+                                        fileName = createDocumentName,
                                         onSave = { onSaveConfirmed?.invoke() },
                                         onCancel = { onSaveCancelled?.invoke() }
                                     )
@@ -1563,6 +1577,48 @@ private fun SaveModeBar(
                 )
                 Text(
                     text = stringResource(R.string.save_here),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            TextButton(onClick = onCancel) {
+                Text(stringResource(R.string.cancel))
+            }
+            Button(onClick = onSave) {
+                Text(stringResource(R.string.save_here))
+            }
+        }
+    }
+}
+
+// =============================================================================
+//  新建文档模式底部栏 (ACTION_CREATE_DOCUMENT)
+// =============================================================================
+@Composable
+private fun CreateDocumentBar(
+    fileName: String,
+    onSave: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Column {
+        HorizontalDivider()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.create_document_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = fileName,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
