@@ -701,26 +701,6 @@ fun FileListScreen(
                                     onSelectAll = { viewModel.selectAll() },
                                     onRefreshClick = { viewModel.refresh() },
                                     onToggleBookmark = { viewModel.toggleFavorite(currentPath) },
-                                    onShareCurrentDir = {
-                                        // 分享当前目录 (照搬 MaterialFiles 的 share())
-                                        val dir = File(currentPath)
-                                        onShareFiles?.invoke(
-                                            listOf(
-                                                FileItem(
-                                                    name = dir.name,
-                                                    path = dir.absolutePath,
-                                                    parentPath = dir.parent ?: "",
-                                                    isDirectory = true,
-                                                    size = 0L,
-                                                    lastModified = dir.lastModified(),
-                                                    extension = "",
-                                                    canRead = dir.canRead(),
-                                                    canWrite = dir.canWrite(),
-                                                    isHidden = dir.isHidden
-                                                )
-                                            )
-                                        )
-                                    },
                                     onCopyPath = { viewModel.copyPathToClipboard(currentPath) },
                                     onExitApp = { onExitApp?.invoke() },
                                     onBreadcrumbBounds = { breadcrumbTailBounds = it }
@@ -1062,7 +1042,6 @@ private fun NormalTopBar(
     onSelectAll: () -> Unit,
     onRefreshClick: () -> Unit,
     onToggleBookmark: () -> Unit,
-    onShareCurrentDir: () -> Unit,
     onCopyPath: () -> Unit,
     onExitApp: () -> Unit,
     onBreadcrumbBounds: ((Rect) -> Unit)? = null
@@ -1218,13 +1197,6 @@ private fun NormalTopBar(
                             }
                         )
                         HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_share)) },
-                            onClick = {
-                                onShareCurrentDir()
-                                showMoreMenu = false
-                            }
-                        )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.copy_path)) },
                             onClick = {
