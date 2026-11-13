@@ -129,7 +129,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onOpenWith = ::openFile,
                     onOpenWithChooser = ::openWith,
-                    onInstallApk = { file -> installApk(file) },
+                    onInstallApk = { file -> installPackage(file) },
                     onExitApp = {
                         // 主动退出: 关闭界面后终止进程, 不留后台服务/内存占用
                         exitAppCompletely()
@@ -467,8 +467,11 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val TAG = "MainActivity"
 
-        /** APK 安装器包名 */
-        private const val INSTALLER_PACKAGE = "io.github.huidoudour.Installer"
+        /** APK 安装器包名 (正式版 / altApp 构建) */
+        private val INSTALLER_PACKAGES = listOf(
+            "io.github.huidoudour.Installer",
+            "dev.huidoudour.installer"
+        )
 
         /** 点击系统媒体通知重新打开播放界面的 Action (由 AudioPlaybackService 使用) */
         const val ACTION_OPEN_PLAYER = "me.huidoudour.file.manager.action.OPEN_PLAYER"
@@ -521,7 +524,10 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 用其他 App 打开文件
+     * 点击文件时的默认行为:
+     * - apk / xapk / apks / apkm: 交给安装器安装；
+     * - zip: 先快速检查是否内含 APK，含则交给安装器，否则按普通文件打开；
+     * - 其他文件: 用其他 App 打开。
      */
     private fun openFile(fileItem: FileItem) {
         if (fileItem.isDirectory) {
@@ -534,12 +540,33 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // APK 文件：仅通过指定安装器安装
-        if (fileItem.extension.equals("apk", ignoreCase = true)) {
-            installApk(file)
+        val extension = fileItem.extension.lowercase()
+        if (me.huidoudour.file.manager.util.FileTypeUtil.isInstallerPackage(extension)) {
+            installPackage(file)
             return
         }
 
+        if (extension == "zip") {
+            // 只读取 zip 中央目录，且限定根层 + 1 级文件夹；检查放到后台避免阻塞主线程
+            viewModel.viewModelScope.launch {
+                val containsApk = withContext(Dispatchers.IO) {
+                    me.huidoudour.file.manager.util.FileTypeUtil.zipContainsApk(file)
+                }
+                if (containsApk) {
+                    installPackage(file)
+                } else {
+                    openFileWithViewer(fileItem)
+                }
+            }
+            return
+        }
+
+        openFileWithViewer(fileItem)
+    }
+
+    /** 使用其他 App 打开文件 (ACTION_VIEW) */
+    private fun openFileWithViewer(fileItem: FileItem) {
+        val file = File(fileItem.path)
         try {
             val uri: Uri = FileProvider.getUriForFile(
                 this,
@@ -602,14 +629,15 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 使用指定安装器 io.github.huidoudour.Installer 安装 APK
+     * 将安装包交给安装器安装。
+     *
+     * 支持 apk / xapk / apks / apkm，以及内含 APK 的 zip；
+     * 后三者由安装器自行解包，这里只需传递正确的 MIME 类型。
      */
-    private fun installApk(file: File) {
+    private fun installPackage(file: File) {
         try {
-            // 先确认安装器包是否存在
-            try {
-                packageManager.getPackageInfo(INSTALLER_PACKAGE, 0)
-            } catch (_: PackageManager.NameNotFoundException) {
+            val installerPackage = findInstallerPackage()
+            if (installerPackage == null) {
                 Toast.makeText(
                     this,
                     getString(R.string.installer_required),
@@ -618,24 +646,27 @@ class MainActivity : ComponentActivity() {
                 return
             }
 
+            // 使用专用 Provider: 会把 zip 的 MIME 归一为二进制流, 通过安装器入口校验
             val uri: Uri = FileProvider.getUriForFile(
                 this,
-                "${packageName}.fileprovider",
+                "${packageName}.installerfileprovider",
                 file
             )
 
+            val mimeType = me.huidoudour.file.manager.util.FileTypeUtil
+                .getInstallerMimeType(file.extension)
+
             // 构建 ACTION_VIEW Intent，锁定到指定安装器
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
+                setDataAndType(uri, mimeType)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                // 仅允许 io.github.huidoudour.Installer 响应
-                setPackage(INSTALLER_PACKAGE)
+                setPackage(installerPackage)
             }
 
             // 授权 URI 给安装器
             grantUriPermission(
-                INSTALLER_PACKAGE,
+                installerPackage,
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
@@ -648,6 +679,19 @@ class MainActivity : ComponentActivity() {
             }
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /** 返回已安装的安装器包名 (兼容 altApp 构建), 未安装时返回 null */
+    private fun findInstallerPackage(): String? {
+        for (pkg in INSTALLER_PACKAGES) {
+            try {
+                packageManager.getPackageInfo(pkg, 0)
+                return pkg
+            } catch (_: PackageManager.NameNotFoundException) {
+                // 继续尝试下一个
+            }
+        }
+        return null
     }
 
     /**

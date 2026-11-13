@@ -15,7 +15,8 @@
 - 分享文件到其他应用
 - 支持被其他 App 调起选取文件（`GET_CONTENT` / `OPEN_DOCUMENT` / `PICK`）
 - 支持被其他 App 调起新建/导出文件（`CREATE_DOCUMENT`）
-- APK 通过 `io.github.huidoudour.Installer` 安装
+- APK / XAPK / APKS / APKM 通过 `io.github.huidoudour.Installer` 安装
+- 点开 ZIP 时快速检查（仅读中央目录、最多两层）是否内含 APK，含则直接发起安装
 
 ## 技术栈
 
