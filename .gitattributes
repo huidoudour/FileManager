@@ -1,1 +1,2 @@
-xCrash/** linguist-vendored
+/dependent/xCrash/** linguist-vendored
+/dependent/SQLite/** linguist-vendored

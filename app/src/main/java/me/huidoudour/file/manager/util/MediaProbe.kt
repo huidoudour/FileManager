@@ -21,14 +21,16 @@ import kotlin.coroutines.resume
  * - [extractThumbnail] 抽取视频首帧缩略图
  * - [extractWaveform] 生成音频波形图
  *
- * 注意: ffmpeg-kit 只发布 arm64-v8a / x86_64 二进制, 其他架构 (如 armeabi-v7a)
- * 无法加载 native 库, 调用方需先通过 [isSupported] 兜底 (回退到系统打开方式)。
+ * 注意: 项目内置的 ffmpeg-kit AAR 已包含 4 个 ABI (arm64-v8a / armeabi-v7a /
+ * x86 / x86_64) 的 native 库, 调用方仍需先通过 [isSupported] 兜底。
  */
 object MediaProbe {
 
-    /** 当前设备 ABI 是否受 ffmpeg-kit 支持 */
+    private val FFMPEG_ABIS = setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+
+    /** 当前设备 ABI 是否受内置 ffmpeg-kit 支持 */
     val isSupported: Boolean =
-        Build.SUPPORTED_ABIS.any { it == "arm64-v8a" || it == "x86_64" }
+        Build.SUPPORTED_ABIS.any { it in FFMPEG_ABIS }
 
     /** 媒体信息 (从 ffprobe 结果提取的展示字段) */
     data class MediaInfo(

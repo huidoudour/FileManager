@@ -159,12 +159,14 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.ui)
-    implementation(libs.dev.ffmpegkit.min)
+    // implementation(libs.dev.ffmpegkit.min)
+    implementation(files("libs/ffmpeg-kit.aar"))
 
     implementation(libs.acra.core)
     implementation(libs.apksig)
     //implementation(files("deps/xcrash-android-lib.aar"))
     implementation(project(":dependent:xCrash"))
+    implementation(project(":dependent:SQLite"))
 
     testImplementation(libs.junit)
 }

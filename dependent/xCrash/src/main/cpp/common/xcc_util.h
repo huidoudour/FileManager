@@ -38,7 +38,7 @@ extern "C" {
 #define XCC_UTIL_THREAD_SEP "--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---\n"
 #define XCC_UTIL_THREAD_END "+++ +++ +++ +++ +++ +++ +++ +++ +++ +++ +++ +++ +++ +++ +++ +++\n"
 
-#define XCC_UTIL_XCRASH_DUMPER_FILENAME "libCrash_dumper.so"
+#define XCC_UTIL_XCRASH_DUMPER_FILENAME "libCrashB.so"
 
 #define XCC_UTIL_CRASH_TYPE_NATIVE "native"
 #define XCC_UTIL_CRASH_TYPE_ANR    "anr"

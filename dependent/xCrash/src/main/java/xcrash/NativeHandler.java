@@ -86,14 +86,14 @@ class NativeHandler {
         //load lib
         if (libLoader == null) {
             try {
-                System.loadLibrary("Crash");
+                System.loadLibrary("CrashA");
             } catch (Throwable e) {
                 XCrash.getLogger().e(Util.TAG, "NativeHandler System.loadLibrary failed", e);
                 return Errno.LOAD_LIBRARY_FAILED;
             }
         } else {
             try {
-                libLoader.loadLibrary("Crash");
+                libLoader.loadLibrary("CrashA");
             } catch (Throwable e) {
                 XCrash.getLogger().e(Util.TAG, "NativeHandler ILibLoader.loadLibrary failed", e);
                 return Errno.LOAD_LIBRARY_FAILED;
