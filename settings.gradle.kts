@@ -26,5 +26,5 @@ dependencyResolutionManagement {
 rootProject.name = "FileManager"
 include(":app")
 include(":baseline")
-include(":xCrash")
+include(":dependent:SQLite")
 include(":dependent:xCrash")
