@@ -1,5 +1,6 @@
 package me.huidoudour.file.manager.ui.component
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -26,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +55,9 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
+import coil.size.Size
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
 import java.io.File
@@ -63,6 +68,7 @@ import kotlin.math.min
  * 图片预览 — 全屏黑底查看器
  *
  * - Coil 解码本地图片, 按 ContentScale.Fit 适配屏幕
+ * - 解码尺寸显式指定为屏幕尺寸 (不能依赖 Coil 的 drawSize, 否则 Loading 态死锁)
  * - 支持双指缩放 (1x~6x)、单指拖动平移、双击在 1x/2.5x 间切换
  * - 顶栏: 文件名 + 关闭; 底栏: 分辨率/大小 + 用其他应用打开
  * - 解码失败时提示可通过其他应用打开
@@ -80,12 +86,24 @@ fun ImagePreviewDialog(
             decorFitsSystemWindows = false
         )
     ) {
+        val context = LocalContext.current
+        // 显式指定解码尺寸: 未指定时 Coil 的 size resolver 会等待 AsyncImagePainter.onDraw
+        // 写入的 drawSize, 而 Loading 态只画转圈不画 painter, 请求将永远挂起 (一直转圈)。
+        // 按屏幕尺寸解码既能立即出图, 也避免超大图按原始尺寸解码导致 OOM。
+        val decodeSize = remember(context) {
+            with(context.resources.displayMetrics) { Size(widthPixels, heightPixels) }
+        }
+        // 请求对象需固定, 避免每次重组都让 Coil 重新执行请求
         val painter = rememberAsyncImagePainter(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(File(item.path))
-                .crossfade(false)
-                .build()
+            model = remember(item.path, decodeSize) {
+                ImageRequest.Builder(context)
+                    .data(File(item.path))
+                    .size(decodeSize)
+                    .crossfade(false)
+                    .build()
+            }
         )
+        val imageDimension = rememberImageDimension(item.path)
 
         Box(
             modifier = Modifier
@@ -172,7 +190,7 @@ fun ImagePreviewDialog(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = imageMeta(painter, item),
+                    text = imageMeta(imageDimension, item),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.8f)
                 )
@@ -187,22 +205,30 @@ fun ImagePreviewDialog(
     }
 }
 
-/** 底栏信息: "1920 × 1080 · 2.3 MB" (尺寸在图片解码完成后才显示) */
+/** 底栏信息: "1920 × 1080 · 2.3 MB" (分辨率取自文件头, 不随解码尺寸变化) */
+private fun imageMeta(dimension: IntSize?, item: FileItem): String {
+    val resolution = dimension
+        ?.takeIf { it.width > 0 && it.height > 0 }
+        ?.let { "${it.width} × ${it.height}" }
+    return listOfNotNull(resolution, FileItem.formatSize(item.size)).joinToString(" · ")
+}
+
+/** 图片原始分辨率: 只解析文件头不解码像素, 读取失败返回 null */
 @Composable
-private fun imageMeta(painter: AsyncImagePainter, item: FileItem): String {
-    val dimension = when (painter.state) {
-        is AsyncImagePainter.State.Success -> {
-            val size = painter.intrinsicSize
-            if (size.width > 0f && size.height > 0f) {
-                "${size.width.toInt()} × ${size.height.toInt()}"
+private fun rememberImageDimension(path: String): IntSize? {
+    var dimension by remember(path) { mutableStateOf<IntSize?>(null) }
+    LaunchedEffect(path) {
+        dimension = withContext(Dispatchers.IO) {
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, options)
+            if (options.outWidth > 0 && options.outHeight > 0) {
+                IntSize(options.outWidth, options.outHeight)
             } else {
                 null
             }
         }
-
-        else -> null
     }
-    return listOfNotNull(dimension, FileItem.formatSize(item.size)).joinToString(" · ")
+    return dimension
 }
 
 /**
