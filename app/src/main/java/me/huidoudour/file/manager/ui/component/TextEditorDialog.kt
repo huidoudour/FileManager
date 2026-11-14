@@ -2,6 +2,8 @@ package me.huidoudour.file.manager.ui.component
 
 import android.os.SystemClock
 import android.view.WindowManager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
@@ -52,6 +55,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
@@ -132,6 +138,8 @@ fun TextEditorDialog(
     val document = (loadResult as? TextLoadResult.Success)?.document
     val readOnly = !item.canWrite
     val dirty = document != null && !textState.text.contentEquals(savedText)
+    // 点额外按键时若编辑框已失焦, 用它在不打断输入的前提下唤回光标
+    val focusRequester = remember { FocusRequester() }
 
     val savedMessage = stringResource(R.string.text_editor_saved)
     val saveFailedTemplate = stringResource(R.string.text_editor_save_failed)
@@ -206,6 +214,28 @@ fun TextEditorDialog(
         }
     }
 
+    /**
+     * 在光标处插入额外键 (选中内容会被替换)。
+     *
+     * 符号栏属于编辑辅助输入, 点击时编辑框可能已失焦,
+     * 这里先唤回焦点再插入, 保证光标位置与键盘状态一致。
+     */
+    fun insertExtraKey(label: String) {
+        if (readOnly) return
+        try {
+            focusRequester.requestFocus()
+        } catch (_: IllegalStateException) {
+            // 编辑框尚未挂载时可忽略, 直接插入即可
+        }
+        val insert = if (label == EXTRA_KEY_TAB) "\t" else label
+        textState.edit {
+            val start = selection.min
+            val end = selection.max
+            replace(start, end, insert)
+            selection = TextRange(start + insert.length)
+        }
+    }
+
     // 文本变化 → 记录撤销点; 程序恢复历史快照时跳过
     LaunchedEffect(textState) {
         snapshotFlow { TextFieldValue(textState.text.toString(), textState.selection) }
@@ -275,19 +305,25 @@ fun TextEditorDialog(
             },
             bottomBar = {
                 if (document != null) {
-                    val cursor = remember(textState.text, textState.selection) {
-                        textPosition(textState.text, textState.selection.end)
+                    Column {
+                        // 额外按键栏: 常用符号快捷输入 (只读时无意义, 不显示)
+                        if (!readOnly) {
+                            EditorExtraKeysBar(onKey = ::insertExtraKey)
+                        }
+                        val cursor = remember(textState.text, textState.selection) {
+                            textPosition(textState.text, textState.selection.end)
+                        }
+                        EditorStatusBar(
+                            encoding = encoding,
+                            lineEnding = lineEnding,
+                            cursorLine = cursor.first,
+                            cursorColumn = cursor.second,
+                            lineCount = remember(textState.text) {
+                                textState.text.count { it == '\n' } + 1
+                            },
+                            charCount = textState.text.length
+                        )
                     }
-                    EditorStatusBar(
-                        encoding = encoding,
-                        lineEnding = lineEnding,
-                        cursorLine = cursor.first,
-                        cursorColumn = cursor.second,
-                        lineCount = remember(textState.text) {
-                            textState.text.count { it == '\n' } + 1
-                        },
-                        charCount = textState.text.length
-                    )
                 }
             },
             snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -307,6 +343,7 @@ fun TextEditorDialog(
                         state = textState,
                         modifier = Modifier
                             .fillMaxSize()
+                            .focusRequester(focusRequester)
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         textStyle = MaterialTheme.typography.bodyMedium.copy(
                             fontFamily = FontFamily.Monospace,
@@ -505,6 +542,75 @@ private fun EditorStatusBar(
                 )
             }
         }
+    }
+}
+
+/** 额外按键栏 Tab 键的标签 (实际插入制表符) */
+private const val EXTRA_KEY_TAB = "Tab"
+
+/**
+ * 额外按键栏: 常用符号快捷输入
+ *
+ * 布局思路对齐 Termux 的 extra-keys (等宽小格子、按屏宽平分),
+ * 只保留文本/代码编辑里高频的符号 —— 全部加满会挤窄按键, 反而不便点按。
+ */
+private val EXTRA_KEY_ROWS = listOf(
+    listOf(EXTRA_KEY_TAB, "(", ")", "[", "]", "{", "}", "<", ">", "\"", "'"),
+    listOf("_", "#", "$", "&", "*", "+", "-", "=", "/", "\\", "|")
+)
+
+/** 额外按键栏: 两行常用符号, 紧贴状态栏上方 */
+@Composable
+private fun EditorExtraKeysBar(onKey: (String) -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                EXTRA_KEY_ROWS.forEach { rowKeys ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        rowKeys.forEach { key ->
+                            ExtraKeyButton(
+                                label = key,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onKey(key) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 单个符号键: 等宽字体居中, 底色与状态栏区分但保持同色系 */
+@Composable
+private fun ExtraKeyButton(
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
+            .height(34.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
     }
 }
 
