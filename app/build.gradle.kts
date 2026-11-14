@@ -104,6 +104,20 @@ android {
                 "META-INF/versions/**"
             )
         }
+        jniLibs {
+            // armeabi-v7a 仅保留基础版 so，排除 NEON 双份实现以减小 APK 体积；
+            // 运行时 NEON 加载失败会由 NativeLoader 自动回退到基础版。
+            excludes += setOf(
+                "lib/armeabi-v7a/libavcodec_neon.so",
+                "lib/armeabi-v7a/libavdevice_neon.so",
+                "lib/armeabi-v7a/libavfilter_neon.so",
+                "lib/armeabi-v7a/libavformat_neon.so",
+                "lib/armeabi-v7a/libavutil_neon.so",
+                "lib/armeabi-v7a/libffmpegkit_armv7a_neon.so",
+                "lib/armeabi-v7a/libswresample_neon.so",
+                "lib/armeabi-v7a/libswscale_neon.so"
+            )
+        }
     }
     lint {
         warningsAsErrors = false
@@ -161,12 +175,17 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     // implementation(libs.dev.ffmpegkit.min)
     implementation(files("libs/ffmpeg-kit.aar"))
+    implementation(libs.smart.exception.java)
 
     implementation(libs.acra.core)
     implementation(libs.apksig)
-    //implementation(files("deps/xcrash-android-lib.aar"))
     implementation(project(":dependent:xCrash"))
     implementation(project(":dependent:SQLite"))
 
     testImplementation(libs.junit)
+
+    val localFile = file("aar/android.aar")
+    if (localFile.exists()) {
+        debugImplementation(files(localFile))
+    }
 }

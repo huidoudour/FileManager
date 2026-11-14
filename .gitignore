@@ -12,6 +12,7 @@
 local.properties
 cache/
 
-# 本地 AAR 依赖 (ffmpeg-kit 全 ABI 构建产物), 不能进 cache
 !app/libs/
 !app/libs/**
+
+/aar
