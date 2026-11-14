@@ -164,7 +164,7 @@ dependencies {
     implementation(libs.acra.core)
     implementation(libs.apksig)
     //implementation(files("deps/xcrash-android-lib.aar"))
-    implementation(project(":xCrash"))
+    implementation(project(":dependent:xCrash"))
 
     testImplementation(libs.junit)
 }

@@ -10,16 +10,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -59,6 +62,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -74,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.launch
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
@@ -264,12 +269,21 @@ fun TextEditorDialog(
             decorFitsSystemWindows = false
         )
     ) {
-        // 键盘 insets 交给 Compose 的 imePadding 处理, 窗口自身不平移/缩放
+        // 键盘 insets 交给 Compose 的 imePadding 处理, 窗口自身不平移/缩放;
+        // 编辑器会盖住整个屏幕 (含状态栏区域), 而 Dialog 是独立 window,
+        // 系统栏图标默认按浅色绘制, 浅色主题下会与顶栏底色撞在一起看不清,
+        // 所以这里显式按 App 主题背景的明暗切图标颜色 (不跟随系统深色模式)。
         val view = LocalView.current
-        DisposableEffect(view) {
-            (view.parent as? DialogWindowProvider)?.window?.setSoftInputMode(
+        val lightSystemBarBackground = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+        DisposableEffect(view, lightSystemBarBackground) {
+            val window = (view.parent as? DialogWindowProvider)?.window
+            window?.setSoftInputMode(
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
             )
+            window?.let { WindowCompat.getInsetsController(it, view) }?.apply {
+                isAppearanceLightStatusBars = lightSystemBarBackground
+                isAppearanceLightNavigationBars = lightSystemBarBackground
+            }
             onDispose { }
         }
 
@@ -434,7 +448,12 @@ private fun EditorTopBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .statusBarsPadding()
+                    // 同时避开状态栏与刘海/挖孔 (横屏时挖孔在侧边)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+                        )
+                    )
                     .heightIn(min = 64.dp)
                     .padding(start = 4.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically

@@ -27,3 +27,4 @@ rootProject.name = "FileManager"
 include(":app")
 include(":baseline")
 include(":xCrash")
+include(":dependent:xCrash")

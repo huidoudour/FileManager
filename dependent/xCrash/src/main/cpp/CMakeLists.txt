@@ -32,6 +32,15 @@ if(CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 21)
 endif()
 
 #######################################
+# 16KB 页面大小支持 (Android 15+ 16KB 页设备)
+#######################################
+
+# NDK r28 仅对 64 位 ABI 默认按 16KB 对齐 LOAD 段，这里显式覆盖所有 ABI（含 32 位）。
+# libCrash.so 是共享库，libCrash_dumper.so 实为伪装成 .so 的可执行文件，两者都要设置。
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")
+
+#######################################
 # libCrash.so
 #######################################
 
