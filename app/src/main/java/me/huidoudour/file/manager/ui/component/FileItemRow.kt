@@ -104,6 +104,7 @@ import java.io.File
 
 /** 单条文件的长按/菜单操作 */
 enum class FileAction(val labelRes: Int) {
+    EDIT(R.string.action_edit),
     OPEN_WITH(R.string.action_open_with),
     SIGN_APK(R.string.action_sign_apk),
     COPY(R.string.action_copy),
@@ -463,6 +464,10 @@ private fun FileActionMenu(
         add(FileAction.DELETE.labelRes to FileAction.DELETE)
         if (!item.isDirectory) {
             add(FileAction.SHARE.labelRes to FileAction.SHARE)
+            // 文本文件可进入内置编辑器, 紧跟分享放在打开方式之前
+            if (FileTypeUtil.isTextExtension(item.extension)) {
+                add(FileAction.EDIT.labelRes to FileAction.EDIT)
+            }
             // 打开方式紧跟分享; APK 额外提供签名 (交给 ApkSign 的分享签名对话框)
             add(FileAction.OPEN_WITH.labelRes to FileAction.OPEN_WITH)
             if (item.extension.equals("apk", ignoreCase = true)) {

@@ -79,6 +79,7 @@
     <string name="action_properties">属性</string>
     <string name="action_open_with">打开方式</string>
     <string name="action_sign_apk">签名</string>
+    <string name="action_edit">编辑</string>
 
     <!-- 底部导航栏 -->
     <string name="nav_back">上一步</string>
@@ -314,6 +315,24 @@
     <string name="audio_mode_play_once">单曲播放</string>
     <string name="audio_details">信息</string>
     <string name="audio_details_collapse">收起信息</string>
+
+    <!-- 文本编辑 -->
+    <string name="text_editor_save">保存</string>
+    <string name="text_editor_undo">撤销</string>
+    <string name="text_editor_redo">重做</string>
+    <string name="text_editor_loading">正在读取…</string>
+    <string name="text_editor_saved">已保存</string>
+    <string name="text_editor_dirty">未保存的修改</string>
+    <string name="text_editor_read_only">只读</string>
+    <string name="text_editor_load_failed">无法读取此文件</string>
+    <string name="text_editor_save_failed">保存失败: %1$s</string>
+    <string name="text_editor_too_large">文件超过 %1$s，无法在应用内编辑，可通过其他应用打开</string>
+    <string name="text_editor_binary">该文件包含二进制内容，无法作为文本编辑</string>
+    <string name="text_editor_discard_title">放弃修改？</string>
+    <string name="text_editor_discard_message">「%1$s」有未保存的修改，关闭后将丢失。</string>
+    <string name="text_editor_discard_confirm">放弃</string>
+    <string name="text_editor_cursor">第 %1$d 行 第 %2$d 列</string>
+    <string name="text_editor_stats">%1$d 行 · %2$d 字符</string>
 
     <!-- 崩溃日志 (ACRA) -->
     <string name="settings_section_diagnostics">诊断</string>

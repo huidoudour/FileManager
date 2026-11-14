@@ -50,6 +50,12 @@ object FileTypeUtil {
     fun isInstallerPackage(extension: String): Boolean =
         extension.lowercase() in apkExtensions
 
+    /** 纯文本文件 (文档与代码类): 可在应用内预览/编辑 */
+    fun isTextExtension(extension: String): Boolean {
+        val ext = extension.lowercase()
+        return ext in documentExtensions || ext in codeExtensions
+    }
+
     /**
      * 安装器使用的 MIME 类型，需与 io.github.huidoudour.Installer 的入口校验保持一致。
      * zip 由安装器自行判断是否内含 APK，因此统一按二进制流传递。

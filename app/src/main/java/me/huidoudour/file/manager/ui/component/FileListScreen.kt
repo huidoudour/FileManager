@@ -197,6 +197,7 @@ fun FileListScreen(
     var actionTarget by remember { mutableStateOf<FileItem?>(null) }
     var signTarget by remember { mutableStateOf<FileItem?>(null) }
     var previewTarget by remember { mutableStateOf<FileItem?>(null) }
+    var editTarget by remember { mutableStateOf<FileItem?>(null) }
     var fabExpanded by remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -495,6 +496,19 @@ fun FileListScreen(
                 onDismiss = { previewTarget = null }
             )
         }
+    }
+
+    // 文本编辑 (内置编辑器: 编码与换行沿用原文件, 保存后就地刷新列表)
+    editTarget?.let { target ->
+        TextEditorDialog(
+            item = target,
+            onSaved = { viewModel.refresh() },
+            onOpenWith = {
+                editTarget = null
+                onOpenWith?.invoke(target)
+            },
+            onDismiss = { editTarget = null }
+        )
     }
 
     // 页面切换（主界面 ↔ 设置页）：完全照搬 Dtool 的 AnimatedContent 联动过渡,
@@ -935,6 +949,11 @@ fun FileListScreen(
                                                                             category == FileCategory.IMAGE ->
                                                                             previewTarget = fileItem
 
+                                                                        // 纯文本 / 代码文件: 打开内置文本编辑器
+                                                                        !pickerMode && !saveMode &&
+                                                                            FileTypeUtil.isTextExtension(fileItem.extension) ->
+                                                                            editTarget = fileItem
+
                                                                         // 音视频文件: 打开内置预览 (解析信息/缩略图/波形 + 播放)
                                                                         !pickerMode && !saveMode && MediaProbe.isSupported &&
                                                                             (category == FileCategory.VIDEO || category == FileCategory.AUDIO) ->
@@ -963,6 +982,8 @@ fun FileListScreen(
                                                         onMenuDismiss = { actionTarget = null },
                                                         onAction = { action ->
                                                             when (action) {
+                                                                FileAction.EDIT ->
+                                                                    editTarget = fileItem
                                                                 FileAction.OPEN_WITH ->
                                                                     onOpenWithChooser?.invoke(fileItem)
                                                                 FileAction.SIGN_APK ->
