@@ -182,10 +182,26 @@ dependencies {
     implementation(project(":dependent:xCrash"))
     implementation(project(":dependent:SQLite"))
 
-    testImplementation(libs.junit)
+    // aar 目录下所有本地 AAR 仅用于 debug 构建，目录不存在或为空时跳过
+    val localAarDir = file("aar")
+    if (localAarDir.isDirectory) {
+        implementation(
+            fileTree(localAarDir) {
+                include("*.aar")
+            }
+        )
+    }
+}
 
-    val localFile = file("aar/android.aar")
-    if (localFile.exists()) {
-        debugImplementation(files(localFile))
+val localLibModules = listOf(":dependent:xCrash", ":dependent:SQLite")
+
+tasks.configureEach {
+    if (name.startsWith("assemble") || name.startsWith("install")) {
+        val libTask = if (name.contains("Release", ignoreCase = true)) {
+            "assembleRelease"
+        } else {
+            "assembleDebug"
+        }
+        localLibModules.forEach { dependsOn("$it:$libTask") }
     }
 }
