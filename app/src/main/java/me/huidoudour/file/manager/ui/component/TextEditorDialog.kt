@@ -97,6 +97,7 @@ import io.github.rosemoe.sora.event.ScrollEvent
 import io.github.rosemoe.sora.event.SelectionChangeEvent
 import io.github.rosemoe.sora.widget.CodeEditor
 import io.github.rosemoe.sora.widget.schemes.EditorColorScheme
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import me.huidoudour.file.manager.R
@@ -226,21 +227,30 @@ fun TextEditorDialog(
         }
     }
 
-    /** 拖动快速滚动条: 按比例跳转; duration 0 立即生效, 手指拖动不等待动画 */
+    /**
+     * 拖动快速滚动条: 按比例跳转。
+     *
+     * 拇指位置以实际滚动偏移为准 (见 [syncScrollBar]), 因此与正文位置一一对应;
+     * startScroll(duration = 0) + abortAnimation 与 Sora 内部的无动画跳转一致, 立即生效。
+     */
     fun seekTo(fraction: Float) {
         val editor = holder.editor ?: return
         val max = editor.scrollMaxY
         if (max <= 0) return
+        val scroller = editor.getScroller()
         val target = (fraction.coerceIn(0f, 1f) * max).roundToInt()
-        editor.getScroller().startScroll(
-            editor.offsetX,
-            editor.offsetY,
+        // 先结束进行中的惯性滑动, 否则残余动画会和手动定位抢位置
+        scroller.forceFinished(true)
+        scroller.startScroll(
+            scroller.getCurrX(),
+            scroller.getCurrY(),
             0,
-            target - editor.offsetY,
+            target - scroller.getCurrY(),
             0
         )
+        scroller.abortAnimation()
         editor.postInvalidateOnAnimation()
-        scrollState.fraction = fraction.coerceIn(0f, 1f)
+        syncScrollBar(editor)
     }
 
     LaunchedEffect(item.path) {
@@ -451,6 +461,8 @@ fun TextEditorDialog(
                                 setHighlightCurrentLine(false)
                                 setHighlightBracketPair(false)
                                 setScrollBarEnabled(false)
+                                // 去掉底部半屏留白: 滚动上限与正文高度一致, 滚动条比例才对应真实位置
+                                setVerticalExtraSpaceFactor(0f)
                                 setWordwrap(wordWrap)
                                 setTabWidth(4)
                                 props.autoIndent = false
@@ -486,15 +498,13 @@ fun TextEditorDialog(
                                 subscribeEvent(SelectionChangeEvent::class.java) { _, _ ->
                                     refreshEditorState(this@apply)
                                 }
-                                // 滚动位置变化: 同步右侧快速滚动条 (只有滚动条自身重组)
-                                subscribeEvent(ScrollEvent::class.java) { event, _ ->
-                                    val max = scrollMaxY
-                                    scrollState.scrollable = max > 0
-                                    scrollState.fraction = if (max > 0) {
-                                        (event.endY.toFloat() / max).coerceIn(0f, 1f)
-                                    } else {
-                                        0f
-                                    }
+                                // 逐帧同步: 编辑器在绘制前由 computeScroll() 写入真实偏移,
+                                // 该回调与正文在同一帧触发, 拖动与惯性滑动时拇指既不跳跃也不落后
+                                setOnScrollChangeListener { _, _, _, _, _ -> syncScrollBar(this) }
+                                // 补充同步: 仅滚动上限变化时 (换行/撤销等改变布局高度) 偏移可能不变,
+                                // 上面的回调不会触发, 这里按最新上限重算比例
+                                subscribeEvent(ScrollEvent::class.java) { _, _ ->
+                                    syncScrollBar(this@apply)
                                 }
                                 setText(session.savedText)
                                 setSelection(0, 0)
@@ -558,6 +568,9 @@ fun TextEditorDialog(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
                             .fillMaxHeight()
+                            // 与编辑区的上下内边距一致: 轨道高度等于正文可视高度,
+                            // 拇指到顶/到底才对应首行/末行, 比例换算没有固定偏移
+                            .padding(top = 12.dp, bottom = 12.dp)
                     )
                 }
             }
@@ -890,8 +903,9 @@ private fun EditorStatusBar(
 /**
  * 右侧快速滚动条: 内容超过一屏时显示, 拖动拇指按比例跳转
  *
- * 只占用编辑区右边缘的窄条 (编辑器内边距内), 不影响正文点按;
- * 拖动时拇指加粗提亮, 松手恢复。
+ * 拇指位置取编辑器真实偏移 (见 [syncScrollBar] 与编辑器控件的滚动回调), 与正文同帧更新,
+ * 拖动和惯性滑动时都随正文一起移动, 不会先跳到终点;
+ * 按在拇指上拖动时保持相对位置, 按在轨道空白处才直接跳到对应位置。
  */
 @Composable
 private fun EditorFastScrollBar(
@@ -903,6 +917,7 @@ private fun EditorFastScrollBar(
     val density = LocalDensity.current
     val thumbHeight = 44.dp
     val thumbHeightPx = with(density) { thumbHeight.toPx() }
+    val grabSlopPx = with(density) { 6.dp.toPx() }
     var trackHeightPx by remember { mutableStateOf(0f) }
     var dragging by remember { mutableStateOf(false) }
     val travel = (trackHeightPx - thumbHeightPx).coerceAtLeast(0f)
@@ -913,18 +928,27 @@ private fun EditorFastScrollBar(
             .onSizeChanged { trackHeightPx = it.height.toFloat() }
             .pointerInput(trackHeightPx, thumbHeightPx) {
                 if (trackHeightPx <= thumbHeightPx) return@pointerInput
-                fun seekAt(y: Float) {
-                    val fraction = ((y - thumbHeightPx / 2f) / travel).coerceIn(0f, 1f)
+                fun seekAt(thumbTopY: Float) {
+                    val fraction = (thumbTopY / travel).coerceIn(0f, 1f)
                     onSeek(fraction)
                 }
+                // 手指与拇指中心的偏移: 按在拇指上时保持相对位置, 拇指不会跳一下
+                var grabOffsetPx = 0f
                 detectDragGestures(
-                    onDragStart = { offset ->
+                    orientationLock = null,
+                    // 按下即响应, 拖动不必先越过触摸斜率, 跟手更直接
+                    shouldAwaitTouchSlop = { false },
+                    onDragStart = { down, _, _ ->
                         dragging = true
-                        seekAt(offset.y)
+                        val thumbCenter = thumbHeightPx / 2f + travel * scrollState.fraction
+                        val onThumb = abs(down.position.y - thumbCenter) <=
+                            thumbHeightPx / 2f + grabSlopPx
+                        grabOffsetPx = if (onThumb) down.position.y - thumbCenter else 0f
+                        if (!onThumb) seekAt(down.position.y - thumbHeightPx / 2f)
                     },
                     onDrag = { change, _ ->
                         change.consume()
-                        seekAt(change.position.y)
+                        seekAt(change.position.y - grabOffsetPx - thumbHeightPx / 2f)
                     },
                     onDragEnd = { dragging = false },
                     onDragCancel = { dragging = false }
