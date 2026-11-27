@@ -1,6 +1,5 @@
 package me.huidoudour.file.manager.ui.component
 
-import android.os.SystemClock
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,7 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
-import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
@@ -50,7 +49,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -70,7 +68,6 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,7 +76,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
 import me.huidoudour.file.manager.util.LineEnding
@@ -88,24 +89,22 @@ import me.huidoudour.file.manager.util.TextFileUtil
 import me.huidoudour.file.manager.util.TextLoadResult
 import java.io.File
 
-/** 撤销历史的内存预算 (按字符数估算): 超出后丢弃最旧的快照, 大文件也能安全编辑 */
-private const val UNDO_CHAR_BUDGET = 8_000_000
+/** 底栏统计的刷新延迟: 输入停顿后计算, 避免逐键扫描全文造成掉帧 */
+private const val STATS_REFRESH_DELAY_MS = 150L
 
-/** 连续输入合并为一步撤销的时间窗口 */
-private const val UNDO_MERGE_INTERVAL_MS = 800L
-
-/** 编辑会话状态: 用普通对象承载, 输入时不会触发额外重组 */
+/** 编辑会话状态: 用普通对象承载, 只在保存/关闭等低频时机读写 */
 private class EditorSession {
-    /** 最近一次已同步到历史的编辑内容 */
-    var lastSnapshot = TextFieldValue()
-
-    /** 待消费的历史恢复次数 (连续撤销/重做时避免误记为普通编辑) */
-    var pendingRestores = 0
-
-    var lastEditAt = 0L
-
-    var undoChars = 0L
+    /** 最近一次保存或加载的文本; 仅低频时机做全文比对, 输入路径不读它 */
+    var savedText = ""
 }
+
+/** 底栏统计: 光标行列 (从 1 开始) / 总行数 / 字符数 */
+private data class EditorStats(
+    val cursorLine: Int,
+    val cursorColumn: Int,
+    val lineCount: Int,
+    val charCount: Int
+)
 
 /**
  * 文本编辑 — 全屏编辑器
@@ -116,6 +115,7 @@ private class EditorSession {
  * - 无写权限的文件进入只读模式; 二进制内容或超过 [TextFileUtil.MAX_EDITABLE_BYTES]
  *   的文件提示改用其他应用打开
  * - 有未保存修改时关闭需二次确认
+ * - 大文件性能: 输入路径上不做全文比对/扫描, 撤销历史为增量记录, 底栏统计在停顿后计算
  */
 @Composable
 fun TextEditorDialog(
@@ -129,20 +129,31 @@ fun TextEditorDialog(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var loadResult by remember(item.path) { mutableStateOf<TextLoadResult?>(null) }
-    var savedText by remember(item.path) { mutableStateOf("") }
     var encoding by remember(item.path) { mutableStateOf(TextEncoding.UTF8) }
     var lineEnding by remember(item.path) { mutableStateOf(LineEnding.LF) }
     var saving by remember(item.path) { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
-    // 编辑缓冲: 文本与光标由 TextFieldState 承载, 撤销历史保存 TextFieldValue 快照
-    val textState = rememberTextFieldState()
+    // 未保存标记: 文本变化时只置位, 不再逐键对全文做 contentEquals (大文件下每次重组比较全文会掉帧)
+    var dirty by remember(item.path) { mutableStateOf(false) }
+    // 文本修订号: 每次文本变化自增, 供底栏统计等低频观察者使用, 避免直接比较全文
+    var textRevision by remember(item.path) { mutableStateOf(0) }
+    // 底栏统计: 输入停顿后计算, 输入过程中底栏不刷新也不扫描全文
+    var stats by remember(item.path) { mutableStateOf(EditorStats(1, 1, 1, 0)) }
     val session = remember(item.path) { EditorSession() }
-    val undoStack = remember(item.path) { mutableStateListOf<TextFieldValue>() }
-    val redoStack = remember(item.path) { mutableStateListOf<TextFieldValue>() }
+    // 编辑缓冲: 文本与光标由 TextFieldState 承载; 撤销历史用其内置 undoState
+    // (增量记录编辑操作, 不再是整文快照, 大文件下不会逐键复制/比较全文)
+    val textState = remember(item.path) {
+        TextFieldState(
+            onTextChanged = {
+                dirty = true
+                textRevision++
+            }
+        )
+    }
+    val undoState = textState.undoState
 
     val document = (loadResult as? TextLoadResult.Success)?.document
     val readOnly = !item.canWrite
-    val dirty = document != null && !textState.text.contentEquals(savedText)
     // 点额外按键时若编辑框已失焦, 用它在不打断输入的前提下唤回光标
     val focusRequester = remember { FocusRequester() }
 
@@ -154,51 +165,49 @@ fun TextEditorDialog(
         if (result is TextLoadResult.Success) {
             encoding = result.document.encoding
             lineEnding = result.document.lineEnding
-            savedText = result.document.content
-            session.lastSnapshot = TextFieldValue(result.document.content, TextRange(0))
+            session.savedText = result.document.content
             textState.edit {
                 replace(0, length, result.document.content)
                 selection = TextRange(0)
             }
+            // 初始内容不属于用户编辑: 清空撤销历史并复位未保存标记
+            undoState.clearHistory()
+            dirty = false
         }
         loadResult = result
     }
 
+    // 底栏统计: 只订阅轻量变化 (修订号与选区), 输入停顿后在后台线程计算一次,
+    // 避免每个按键都对全文做 O(n) 扫描
+    LaunchedEffect(textState) {
+        snapshotFlow { textRevision to textState.selection }
+            .collectLatest {
+                delay(STATS_REFRESH_DELAY_MS)
+                val text = textState.text
+                val caret = textState.selection.end
+                stats = withContext(Dispatchers.Default) { computeStats(text, caret) }
+            }
+    }
+
     fun requestClose() {
-        if (dirty) showDiscardDialog = true else onDismiss()
-    }
-
-    /** 记录一步撤销快照, 超出字符预算时丢弃最旧的 */
-    fun pushUndo(snapshot: TextFieldValue) {
-        undoStack.add(snapshot)
-        session.undoChars += snapshot.text.length
-        while (undoStack.size > 1 && session.undoChars > UNDO_CHAR_BUDGET) {
-            session.undoChars -= undoStack.removeAt(0).text.length
-        }
-    }
-
-    /** 将历史快照写回编辑缓冲 (光标一并还原) */
-    fun applySnapshot(snapshot: TextFieldValue) {
-        session.pendingRestores++
-        textState.edit {
-            replace(0, length, snapshot.text)
-            selection = snapshot.selection
-        }
+        // 关闭前精确比对一次 (仅用户主动关闭时发生, 低频, 允许一次全文比较)
+        val hasUnsavedChanges = document != null &&
+            !textState.text.contentEquals(session.savedText)
+        dirty = hasUnsavedChanges
+        if (hasUnsavedChanges) showDiscardDialog = true else onDismiss()
     }
 
     fun undo() {
-        val previous = undoStack.removeLastOrNull() ?: return
-        session.undoChars -= previous.text.length
-        redoStack.add(TextFieldValue(textState.text.toString(), textState.selection))
-        applySnapshot(previous)
-        session.lastEditAt = 0L
+        if (!undoState.canUndo) return
+        undoState.undo()
+        // 撤销可能正好回到已保存内容, 精确刷新未保存标记 (低频操作)
+        dirty = !textState.text.contentEquals(session.savedText)
     }
 
     fun redo() {
-        val next = redoStack.removeLastOrNull() ?: return
-        pushUndo(TextFieldValue(textState.text.toString(), textState.selection))
-        applySnapshot(next)
-        session.lastEditAt = 0L
+        if (!undoState.canRedo) return
+        undoState.redo()
+        dirty = !textState.text.contentEquals(session.savedText)
     }
 
     fun save() {
@@ -209,7 +218,8 @@ fun TextEditorDialog(
             val result = runCatching { TextFileUtil.save(file, snapshot, encoding, lineEnding) }
             saving = false
             if (result.isSuccess) {
-                savedText = snapshot
+                session.savedText = snapshot
+                dirty = false
                 onSaved()
                 snackbarHostState.showSnackbar(savedMessage)
             } else {
@@ -241,27 +251,6 @@ fun TextEditorDialog(
         }
     }
 
-    // 文本变化 → 记录撤销点; 程序恢复历史快照时跳过
-    LaunchedEffect(textState) {
-        snapshotFlow { TextFieldValue(textState.text.toString(), textState.selection) }
-            .collect { next ->
-                if (next == session.lastSnapshot) return@collect
-                if (session.pendingRestores > 0) {
-                    session.pendingRestores--
-                    session.lastSnapshot = next
-                    return@collect
-                }
-                val now = SystemClock.uptimeMillis()
-                // 连续输入合并为一步撤销, 避免每个字符都进历史
-                if (now - session.lastEditAt > UNDO_MERGE_INTERVAL_MS) {
-                    pushUndo(session.lastSnapshot)
-                    redoStack.clear()
-                }
-                session.lastEditAt = now
-                session.lastSnapshot = next
-            }
-    }
-
     Dialog(
         onDismissRequest = ::requestClose,
         properties = DialogProperties(
@@ -287,13 +276,6 @@ fun TextEditorDialog(
             onDispose { }
         }
 
-        val subtitle = when {
-            loadResult == null -> stringResource(R.string.text_editor_loading)
-            document == null -> stringResource(R.string.text_editor_load_failed)
-            readOnly -> stringResource(R.string.text_editor_read_only)
-            dirty -> stringResource(R.string.text_editor_dirty)
-            else -> stringResource(R.string.text_editor_saved)
-        }
         val subtitleError = loadResult != null && document == null
 
         Scaffold(
@@ -303,14 +285,22 @@ fun TextEditorDialog(
             containerColor = MaterialTheme.colorScheme.background,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
+                // 易变状态在顶栏自身的组合范围内读取, 输入时不牵连整个编辑页重组
+                val subtitle = when {
+                    loadResult == null -> stringResource(R.string.text_editor_loading)
+                    document == null -> stringResource(R.string.text_editor_load_failed)
+                    readOnly -> stringResource(R.string.text_editor_read_only)
+                    dirty -> stringResource(R.string.text_editor_dirty)
+                    else -> stringResource(R.string.text_editor_saved)
+                }
                 EditorTopBar(
                     title = item.name,
                     subtitle = subtitle,
                     subtitleError = subtitleError,
                     readOnly = readOnly,
                     canSave = dirty && !saving,
-                    canUndo = undoStack.isNotEmpty(),
-                    canRedo = redoStack.isNotEmpty(),
+                    canUndo = undoState.canUndo,
+                    canRedo = undoState.canRedo,
                     onClose = ::requestClose,
                     onUndo = ::undo,
                     onRedo = ::redo,
@@ -324,18 +314,12 @@ fun TextEditorDialog(
                         if (!readOnly) {
                             EditorExtraKeysBar(onKey = ::insertExtraKey)
                         }
-                        val cursor = remember(textState.text, textState.selection) {
-                            textPosition(textState.text, textState.selection.end)
-                        }
+                        // 统计值通过 lambda 延迟到状态栏内读取: 数值更新只重组状态栏,
+                        // 不带动额外按键栏, 也不在输入路径上扫描全文
                         EditorStatusBar(
                             encoding = encoding,
                             lineEnding = lineEnding,
-                            cursorLine = cursor.first,
-                            cursorColumn = cursor.second,
-                            lineCount = remember(textState.text) {
-                                textState.text.count { it == '\n' } + 1
-                            },
-                            charCount = textState.text.length
+                            stats = { stats }
                         )
                     }
                 }
@@ -520,11 +504,9 @@ private fun EditorTopBar(
 private fun EditorStatusBar(
     encoding: TextEncoding,
     lineEnding: LineEnding,
-    cursorLine: Int,
-    cursorColumn: Int,
-    lineCount: Int,
-    charCount: Int
+    stats: () -> EditorStats
 ) {
+    val current = stats()
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -545,8 +527,8 @@ private fun EditorStatusBar(
                 Text(
                     text = stringResource(
                         R.string.text_editor_cursor,
-                        cursorLine,
-                        cursorColumn
+                        current.cursorLine,
+                        current.cursorColumn
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -554,7 +536,11 @@ private fun EditorStatusBar(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = stringResource(R.string.text_editor_stats, lineCount, charCount),
+                    text = stringResource(
+                        R.string.text_editor_stats,
+                        current.lineCount,
+                        current.charCount
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
@@ -667,16 +653,20 @@ private fun EditorMessage(
     }
 }
 
-/** 光标所在行列 (从 1 开始) */
-private fun textPosition(text: CharSequence, offset: Int): Pair<Int, Int> {
-    val end = offset.coerceIn(0, text.length)
-    var line = 1
+/** 单次遍历同时算出行列、总行数与字符数; 在后台线程调用, 大文件下不占用 UI 帧 */
+private fun computeStats(text: CharSequence, caret: Int): EditorStats {
+    val end = caret.coerceIn(0, text.length)
+    var cursorLine = 1
     var lineStart = 0
-    for (index in 0 until end) {
+    var lineCount = 1
+    for (index in text.indices) {
         if (text[index] == '\n') {
-            line++
-            lineStart = index + 1
+            lineCount++
+            if (index < end) {
+                cursorLine++
+                lineStart = index + 1
+            }
         }
     }
-    return line to (end - lineStart + 1)
+    return EditorStats(cursorLine, end - lineStart + 1, lineCount, text.length)
 }
