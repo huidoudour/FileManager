@@ -92,7 +92,7 @@ sealed interface TextLoadResult {
  * - 保存: 沿用读取时的编码与换行风格, BOM 原样写回, 其他应用打开时的显示效果不变
  */
 object TextFileUtil {
-    /** 超过该大小的文件不进入内置编辑器 (大段文本在 BasicTextField 中无法流畅渲染) */
+    /** 超过该大小的文件不进入内置编辑器 (避免一次性载入过大文本占用内存) */
     const val MAX_EDITABLE_BYTES = 1L * 1024 * 1024
 
     /** 二进制检测只看文件开头, 避免大文件全量扫描 */

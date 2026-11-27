@@ -179,6 +179,8 @@ dependencies {
 
     implementation(libs.acra.core)
     implementation(libs.apksig)
+    // 大文件文本编辑: 行虚拟化的代码编辑器 (View 体系, Compose AndroidView 嵌入)
+    implementation(libs.sora.editor)
     implementation(project(":dependent:xCrash"))
     implementation(project(":dependent:SQLite"))
 

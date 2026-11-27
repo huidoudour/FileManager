@@ -1,5 +1,6 @@
 package me.huidoudour.file.manager.ui.component
 
+import android.graphics.Typeface
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,10 +24,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.input.TextFieldLineLimits
-import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
@@ -53,34 +50,31 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
+import io.github.rosemoe.sora.event.ContentChangeEvent
+import io.github.rosemoe.sora.event.SelectionChangeEvent
+import io.github.rosemoe.sora.widget.CodeEditor
+import io.github.rosemoe.sora.widget.schemes.EditorColorScheme
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
 import me.huidoudour.file.manager.util.LineEnding
@@ -89,13 +83,15 @@ import me.huidoudour.file.manager.util.TextFileUtil
 import me.huidoudour.file.manager.util.TextLoadResult
 import java.io.File
 
-/** 底栏统计的刷新延迟: 输入停顿后计算, 避免逐键扫描全文造成掉帧 */
-private const val STATS_REFRESH_DELAY_MS = 150L
-
 /** 编辑会话状态: 用普通对象承载, 只在保存/关闭等低频时机读写 */
 private class EditorSession {
     /** 最近一次保存或加载的文本; 仅低频时机做全文比对, 输入路径不读它 */
     var savedText = ""
+}
+
+/** factory 创建编辑器后持有实例; Compose 侧通过它调用撤销/保存/额外按键等操作 */
+private class EditorHolder {
+    var editor: CodeEditor? = null
 }
 
 /** 底栏统计: 光标行列 (从 1 开始) / 总行数 / 字符数 */
@@ -109,13 +105,14 @@ private data class EditorStats(
 /**
  * 文本编辑 — 全屏编辑器
  *
+ * - 编辑区基于 Sora Editor (行虚拟化渲染), 大文件只排版可见行,
+ *   300KB~1MB 的文本也能流畅输入与滚动, 不再是 Compose 文本框的整段排版
  * - 顶栏: 关闭 / 文件名与保存状态 / 撤销 / 重做 / 保存
  * - 底栏: 编码 · 换行风格 · 光标位置 · 行数与字符数
  * - 编码与换行沿用原文件 (见 [TextFileUtil]), 保存后其他应用打开时显示效果不变
  * - 无写权限的文件进入只读模式; 二进制内容或超过 [TextFileUtil.MAX_EDITABLE_BYTES]
  *   的文件提示改用其他应用打开
  * - 有未保存修改时关闭需二次确认
- * - 大文件性能: 输入路径上不做全文比对/扫描, 撤销历史为增量记录, 底栏统计在停顿后计算
  */
 @Composable
 fun TextEditorDialog(
@@ -133,32 +130,36 @@ fun TextEditorDialog(
     var lineEnding by remember(item.path) { mutableStateOf(LineEnding.LF) }
     var saving by remember(item.path) { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
-    // 未保存标记: 文本变化时只置位, 不再逐键对全文做 contentEquals (大文件下每次重组比较全文会掉帧)
+    // 未保存标记: 编辑器的事件回调里只置位, 输入路径上不做全文比较
     var dirty by remember(item.path) { mutableStateOf(false) }
-    // 文本修订号: 每次文本变化自增, 供底栏统计等低频观察者使用, 避免直接比较全文
-    var textRevision by remember(item.path) { mutableStateOf(0) }
-    // 底栏统计: 输入停顿后计算, 输入过程中底栏不刷新也不扫描全文
+    // 撤销/重做可用性: 由编辑器事件驱动刷新, 顶栏按钮据此启用
+    var canUndo by remember(item.path) { mutableStateOf(false) }
+    var canRedo by remember(item.path) { mutableStateOf(false) }
+    // 底栏统计: 行虚拟化编辑器可直接 O(1) 取出行列/行数/字符数, 事件里即时刷新
     var stats by remember(item.path) { mutableStateOf(EditorStats(1, 1, 1, 0)) }
     val session = remember(item.path) { EditorSession() }
-    // 编辑缓冲: 文本与光标由 TextFieldState 承载; 撤销历史用其内置 undoState
-    // (增量记录编辑操作, 不再是整文快照, 大文件下不会逐键复制/比较全文)
-    val textState = remember(item.path) {
-        TextFieldState(
-            onTextChanged = {
-                dirty = true
-                textRevision++
-            }
-        )
-    }
-    val undoState = textState.undoState
+    val holder = remember(item.path) { EditorHolder() }
 
     val document = (loadResult as? TextLoadResult.Success)?.document
     val readOnly = !item.canWrite
-    // 点额外按键时若编辑框已失焦, 用它在不打断输入的前提下唤回光标
-    val focusRequester = remember { FocusRequester() }
 
     val savedMessage = stringResource(R.string.text_editor_saved)
     val saveFailedTemplate = stringResource(R.string.text_editor_save_failed)
+
+    /** 刷新底栏统计与撤销状态; 读取均为 O(1), 可在每次输入/光标移动时调用 */
+    fun refreshEditorState(editor: CodeEditor) {
+        val cursor = editor.cursor
+        val text = editor.text
+        val next = EditorStats(
+            cursorLine = cursor.rightLine + 1,
+            cursorColumn = cursor.rightColumn + 1,
+            lineCount = text.lineCount,
+            charCount = text.length
+        )
+        if (next != stats) stats = next
+        canUndo = editor.canUndo()
+        canRedo = editor.canRedo()
+    }
 
     LaunchedEffect(item.path) {
         val result = TextFileUtil.load(file)
@@ -166,53 +167,41 @@ fun TextEditorDialog(
             encoding = result.document.encoding
             lineEnding = result.document.lineEnding
             session.savedText = result.document.content
-            textState.edit {
-                replace(0, length, result.document.content)
-                selection = TextRange(0)
-            }
-            // 初始内容不属于用户编辑: 清空撤销历史并复位未保存标记
-            undoState.clearHistory()
-            dirty = false
         }
         loadResult = result
     }
 
-    // 底栏统计: 只订阅轻量变化 (修订号与选区), 输入停顿后在后台线程计算一次,
-    // 避免每个按键都对全文做 O(n) 扫描
-    LaunchedEffect(textState) {
-        snapshotFlow { textRevision to textState.selection }
-            .collectLatest {
-                delay(STATS_REFRESH_DELAY_MS)
-                val text = textState.text
-                val caret = textState.selection.end
-                stats = withContext(Dispatchers.Default) { computeStats(text, caret) }
-            }
-    }
-
     fun requestClose() {
-        // 关闭前精确比对一次 (仅用户主动关闭时发生, 低频, 允许一次全文比较)
-        val hasUnsavedChanges = document != null &&
-            !textState.text.contentEquals(session.savedText)
+        val editor = holder.editor
+        // 关闭前精确比对一次 (仅用户主动关闭时发生, 低频, 允许一次全文比较);
+        // 没有输入过 (dirty 为 false) 时直接跳过比较
+        val hasUnsavedChanges = editor != null && dirty &&
+            editor.text.toString() != session.savedText
         dirty = hasUnsavedChanges
         if (hasUnsavedChanges) showDiscardDialog = true else onDismiss()
     }
 
     fun undo() {
-        if (!undoState.canUndo) return
-        undoState.undo()
+        val editor = holder.editor ?: return
+        if (!editor.canUndo()) return
+        editor.undo()
         // 撤销可能正好回到已保存内容, 精确刷新未保存标记 (低频操作)
-        dirty = !textState.text.contentEquals(session.savedText)
+        refreshEditorState(editor)
+        dirty = editor.text.toString() != session.savedText
     }
 
     fun redo() {
-        if (!undoState.canRedo) return
-        undoState.redo()
-        dirty = !textState.text.contentEquals(session.savedText)
+        val editor = holder.editor ?: return
+        if (!editor.canRedo()) return
+        editor.redo()
+        refreshEditorState(editor)
+        dirty = editor.text.toString() != session.savedText
     }
 
     fun save() {
+        val editor = holder.editor ?: return
         if (!dirty || saving || readOnly) return
-        val snapshot = textState.text.toString()
+        val snapshot = editor.text.toString()
         saving = true
         scope.launch {
             val result = runCatching { TextFileUtil.save(file, snapshot, encoding, lineEnding) }
@@ -232,23 +221,16 @@ fun TextEditorDialog(
     /**
      * 在光标处插入额外键 (选中内容会被替换)。
      *
-     * 符号栏属于编辑辅助输入, 点击时编辑框可能已失焦,
-     * 这里先唤回焦点再插入, 保证光标位置与键盘状态一致。
+     * 符号栏属于编辑辅助输入, 点击时编辑框可能已失焦且键盘已收起,
+     * 先唤回焦点与键盘, 再走编辑器的文本提交通道, 保证撤销历史与光标位置一致。
      */
     fun insertExtraKey(label: String) {
+        val editor = holder.editor ?: return
         if (readOnly) return
-        try {
-            focusRequester.requestFocus()
-        } catch (_: IllegalStateException) {
-            // 编辑框尚未挂载时可忽略, 直接插入即可
-        }
         val insert = if (label == EXTRA_KEY_TAB) "\t" else label
-        textState.edit {
-            val start = selection.min
-            val end = selection.max
-            replace(start, end, insert)
-            selection = TextRange(start + insert.length)
-        }
+        editor.showSoftInput()
+        // 关闭自动缩进与符号补全: 与普通文本编辑行为一致, 插入内容与按键一致
+        editor.commitText(insert, false, false)
     }
 
     Dialog(
@@ -277,6 +259,17 @@ fun TextEditorDialog(
         }
 
         val subtitleError = loadResult != null && document == null
+        val backgroundColor = MaterialTheme.colorScheme.background
+        val textColor = MaterialTheme.colorScheme.onSurface
+        // 选区底色对齐 Compose 默认的 primary 40% 透明度
+        val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+        val cursorColor = MaterialTheme.colorScheme.primary
+        val actionWindowBackground = MaterialTheme.colorScheme.surfaceVariant
+        val actionWindowIcon = MaterialTheme.colorScheme.onSurfaceVariant
+        // 字号与行高沿用旧编辑框: 14sp 正文 / 22sp 行高
+        val density = LocalDensity.current
+        val textSizePx = with(density) { 14.sp.toPx() }
+        val lineHeightPx = with(density) { 22.sp.toPx() }
 
         Scaffold(
             modifier = Modifier
@@ -299,8 +292,8 @@ fun TextEditorDialog(
                     subtitleError = subtitleError,
                     readOnly = readOnly,
                     canSave = dirty && !saving,
-                    canUndo = undoState.canUndo,
-                    canRedo = undoState.canRedo,
+                    canUndo = canUndo,
+                    canRedo = canRedo,
                     onClose = ::requestClose,
                     onUndo = ::undo,
                     onRedo = ::redo,
@@ -314,8 +307,7 @@ fun TextEditorDialog(
                         if (!readOnly) {
                             EditorExtraKeysBar(onKey = ::insertExtraKey)
                         }
-                        // 统计值通过 lambda 延迟到状态栏内读取: 数值更新只重组状态栏,
-                        // 不带动额外按键栏, 也不在输入路径上扫描全文
+                        // 统计值通过 lambda 延迟到状态栏内读取: 数值更新只重组状态栏
                         EditorStatusBar(
                             encoding = encoding,
                             lineEnding = lineEnding,
@@ -337,25 +329,76 @@ fun TextEditorDialog(
                         color = MaterialTheme.colorScheme.primary
                     )
 
-                    is TextLoadResult.Success -> BasicTextField(
-                        state = textState,
+                    is TextLoadResult.Success -> AndroidView(
+                        factory = { context ->
+                            CodeEditor(context).apply {
+                                holder.editor = this
+                                // 纯文本编辑: 等宽字体, 关闭行号/当前行高亮/滚动条/括号匹配
+                                setTypefaceText(Typeface.MONOSPACE)
+                                setLineNumberEnabled(false)
+                                setHighlightCurrentLine(false)
+                                setHighlightBracketPair(false)
+                                setScrollBarEnabled(false)
+                                setWordwrap(true)
+                                setTabWidth(4)
+                                props.autoIndent = false
+                                props.symbolPairAutoCompletion = false
+                                props.highlightMatchingDelimiters = false
+                                setEditable(!readOnly)
+                                setTextSizePx(textSizePx)
+                                val fontMetrics = textPaint.fontMetricsInt
+                                setLineSpacingExtra(
+                                    (lineHeightPx - (fontMetrics.descent - fontMetrics.ascent))
+                                        .coerceAtLeast(0f)
+                                )
+                                colorScheme = EditorColorScheme()
+                                applyPlainTextColors(
+                                    backgroundColor = backgroundColor.toArgb(),
+                                    textColor = textColor.toArgb(),
+                                    selectionColor = selectionColor.toArgb(),
+                                    cursorColor = cursorColor.toArgb(),
+                                    actionWindowBackground = actionWindowBackground.toArgb(),
+                                    actionWindowIcon = actionWindowIcon.toArgb()
+                                )
+                                // 内容变化: 置位未保存标记并刷新撤销/统计状态;
+                                // 初始加载 (ACTION_SET_NEW_TEXT) 不算用户输入
+                                subscribeEvent(ContentChangeEvent::class.java) { event, _ ->
+                                    if (event.action == ContentChangeEvent.ACTION_SET_NEW_TEXT) {
+                                        return@subscribeEvent
+                                    }
+                                    dirty = true
+                                    refreshEditorState(this@apply)
+                                }
+                                subscribeEvent(SelectionChangeEvent::class.java) { _, _ ->
+                                    refreshEditorState(this@apply)
+                                }
+                                setText(session.savedText)
+                                setSelection(0, 0)
+                                // 挂载后同步一次统计与历史状态; 期间若已产生输入则不覆盖脏标记
+                                post {
+                                    refreshEditorState(this@apply)
+                                    if (!canUndo()) dirty = false
+                                }
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxSize()
-                            .focusRequester(focusRequester)
                             .padding(horizontal = 16.dp, vertical = 12.dp),
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 14.sp,
-                            lineHeight = 22.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        ),
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.None,
-                            autoCorrectEnabled = false
-                        ),
-                        lineLimits = TextFieldLineLimits.MultiLine(),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        readOnly = readOnly
+                        update = { editor ->
+                            editor.setEditable(!readOnly)
+                            editor.applyPlainTextColors(
+                                backgroundColor = backgroundColor.toArgb(),
+                                textColor = textColor.toArgb(),
+                                selectionColor = selectionColor.toArgb(),
+                                cursorColor = cursorColor.toArgb(),
+                                actionWindowBackground = actionWindowBackground.toArgb(),
+                                actionWindowIcon = actionWindowIcon.toArgb()
+                            )
+                        },
+                        onRelease = { editor ->
+                            holder.editor = null
+                            editor.release()
+                        }
                     )
 
                     TextLoadResult.TooLarge -> EditorMessage(
@@ -409,6 +452,27 @@ fun TextEditorDialog(
                 }
             )
         }
+    }
+}
+
+/** 同步编辑器配色到当前 Material 主题: 纯文本编辑只需背景/正文/选区/光标/文本操作浮窗 */
+private fun CodeEditor.applyPlainTextColors(
+    backgroundColor: Int,
+    textColor: Int,
+    selectionColor: Int,
+    cursorColor: Int,
+    actionWindowBackground: Int,
+    actionWindowIcon: Int
+) {
+    setBackgroundColor(backgroundColor)
+    colorScheme.apply {
+        setColor(EditorColorScheme.WHOLE_BACKGROUND, backgroundColor)
+        setColor(EditorColorScheme.TEXT_NORMAL, textColor)
+        setColor(EditorColorScheme.SELECTED_TEXT_BACKGROUND, selectionColor)
+        setColor(EditorColorScheme.SELECTION_INSERT, cursorColor)
+        setColor(EditorColorScheme.SELECTION_HANDLE, cursorColor)
+        setColor(EditorColorScheme.TEXT_ACTION_WINDOW_BACKGROUND, actionWindowBackground)
+        setColor(EditorColorScheme.TEXT_ACTION_WINDOW_ICON_COLOR, actionWindowIcon)
     }
 }
 
@@ -651,22 +715,4 @@ private fun EditorMessage(
             Text(stringResource(R.string.media_preview_open_with))
         }
     }
-}
-
-/** 单次遍历同时算出行列、总行数与字符数; 在后台线程调用, 大文件下不占用 UI 帧 */
-private fun computeStats(text: CharSequence, caret: Int): EditorStats {
-    val end = caret.coerceIn(0, text.length)
-    var cursorLine = 1
-    var lineStart = 0
-    var lineCount = 1
-    for (index in text.indices) {
-        if (text[index] == '\n') {
-            lineCount++
-            if (index < end) {
-                cursorLine++
-                lineStart = index + 1
-            }
-        }
-    }
-    return EditorStats(cursorLine, end - lineStart + 1, lineCount, text.length)
 }
