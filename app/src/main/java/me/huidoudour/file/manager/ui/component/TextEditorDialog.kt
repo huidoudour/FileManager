@@ -1,9 +1,12 @@
 package me.huidoudour.file.manager.ui.component
 
+import android.content.Context
 import android.graphics.Typeface
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,27 +14,40 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.WrapText
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,6 +65,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +73,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -63,17 +83,21 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.content.edit
 import androidx.core.view.WindowCompat
 import io.github.rosemoe.sora.event.ContentChangeEvent
+import io.github.rosemoe.sora.event.ScrollEvent
 import io.github.rosemoe.sora.event.SelectionChangeEvent
 import io.github.rosemoe.sora.widget.CodeEditor
 import io.github.rosemoe.sora.widget.schemes.EditorColorScheme
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import me.huidoudour.file.manager.R
 import me.huidoudour.file.manager.model.FileItem
@@ -82,6 +106,11 @@ import me.huidoudour.file.manager.util.TextEncoding
 import me.huidoudour.file.manager.util.TextFileUtil
 import me.huidoudour.file.manager.util.TextLoadResult
 import java.io.File
+
+/** 换行开关与行号固定的记忆位置: 显示偏好与文件无关, 所有文档共用 */
+private const val EDITOR_PREFS_NAME = "text_editor_prefs"
+private const val KEY_WORD_WRAP = "word_wrap"
+private const val KEY_LINE_NUMBER_PINNED = "line_number_pinned"
 
 /** 编辑会话状态: 用普通对象承载, 只在保存/关闭等低频时机读写 */
 private class EditorSession {
@@ -102,12 +131,21 @@ private data class EditorStats(
     val charCount: Int
 )
 
+/** 右侧快速滚动条状态: 内容是否超出一屏 + 当前纵向滚动比例 (0..1) */
+private class EditorScrollState {
+    var scrollable by mutableStateOf(false)
+    var fraction by mutableStateOf(0f)
+}
+
 /**
  * 文本编辑 — 全屏编辑器
  *
  * - 编辑区基于 Sora Editor (行虚拟化渲染), 大文件只排版可见行,
  *   300KB~1MB 的文本也能流畅输入与滚动, 不再是 Compose 文本框的整段排版
- * - 顶栏: 关闭 / 文件名与保存状态 / 撤销 / 重做 / 保存
+ * - 行号常显, 默认横向滚动时固定 (更多菜单可关); 更多菜单还控制自动换行 (记住上次选择),
+ *   符号栏单行横滑, 可在底栏收起
+ * - 右侧快速滚动条: 拖动拇指按比例跳转, 长文件不必逐屏滑动
+ * - 顶栏: 关闭 / 文件名与保存状态 / 更多菜单 (保存 / 撤销 / 重做 / 自动换行 / 行号列固定)
  * - 底栏: 编码 · 换行风格 · 光标位置 · 行数与字符数
  * - 编码与换行沿用原文件 (见 [TextFileUtil]), 保存后其他应用打开时显示效果不变
  * - 无写权限的文件进入只读模式; 二进制内容或超过 [TextFileUtil.MAX_EDITABLE_BYTES]
@@ -139,6 +177,22 @@ fun TextEditorDialog(
     var stats by remember(item.path) { mutableStateOf(EditorStats(1, 1, 1, 0)) }
     val session = remember(item.path) { EditorSession() }
     val holder = remember(item.path) { EditorHolder() }
+    // 快速滚动条状态: 滚动事件的回调里更新, 仅滚动条自身重组
+    val scrollState = remember(item.path) { EditorScrollState() }
+    // 换行开关: 首次打开沿用上次选择; 关闭换行后长行改为横向滚动
+    val context = LocalContext.current
+    val editorPrefs = remember {
+        context.getSharedPreferences(EDITOR_PREFS_NAME, Context.MODE_PRIVATE)
+    }
+    var wordWrap by remember(item.path) {
+        mutableStateOf(editorPrefs.getBoolean(KEY_WORD_WRAP, true))
+    }
+    // 行号列固定: 关闭换行横向滚动时, 行号槽是否留在原地
+    var lineNumberPinned by remember(item.path) {
+        mutableStateOf(editorPrefs.getBoolean(KEY_LINE_NUMBER_PINNED, true))
+    }
+    // 符号栏展开状态: 键盘弹出时可收起, 给编辑区让出空间
+    var keysExpanded by rememberSaveable(item.path) { mutableStateOf(true) }
 
     val document = (loadResult as? TextLoadResult.Success)?.document
     val readOnly = !item.canWrite
@@ -159,6 +213,34 @@ fun TextEditorDialog(
         if (next != stats) stats = next
         canUndo = editor.canUndo()
         canRedo = editor.canRedo()
+    }
+
+    /** 同步快速滚动条: 内容超过一屏才显示, 位置取当前纵向偏移 */
+    fun syncScrollBar(editor: CodeEditor) {
+        val max = editor.scrollMaxY
+        scrollState.scrollable = max > 0
+        scrollState.fraction = if (max > 0) {
+            (editor.offsetY.toFloat() / max).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+    }
+
+    /** 拖动快速滚动条: 按比例跳转; duration 0 立即生效, 手指拖动不等待动画 */
+    fun seekTo(fraction: Float) {
+        val editor = holder.editor ?: return
+        val max = editor.scrollMaxY
+        if (max <= 0) return
+        val target = (fraction.coerceIn(0f, 1f) * max).roundToInt()
+        editor.getScroller().startScroll(
+            editor.offsetX,
+            editor.offsetY,
+            0,
+            target - editor.offsetY,
+            0
+        )
+        editor.postInvalidateOnAnimation()
+        scrollState.fraction = fraction.coerceIn(0f, 1f)
     }
 
     LaunchedEffect(item.path) {
@@ -233,6 +315,22 @@ fun TextEditorDialog(
         editor.commitText(insert, false, false)
     }
 
+    fun toggleWordWrap() {
+        wordWrap = !wordWrap
+        holder.editor?.let { editor ->
+            editor.setWordwrap(wordWrap)
+            // 换行改变内容高度: 布局完成后重新同步滚动条可见性
+            editor.post { syncScrollBar(editor) }
+        }
+        editorPrefs.edit { putBoolean(KEY_WORD_WRAP, wordWrap) }
+    }
+
+    fun toggleLineNumberPin() {
+        lineNumberPinned = !lineNumberPinned
+        holder.editor?.setPinLineNumber(lineNumberPinned)
+        editorPrefs.edit { putBoolean(KEY_LINE_NUMBER_PINNED, lineNumberPinned) }
+    }
+
     Dialog(
         onDismissRequest = ::requestClose,
         properties = DialogProperties(
@@ -266,10 +364,14 @@ fun TextEditorDialog(
         val cursorColor = MaterialTheme.colorScheme.primary
         val actionWindowBackground = MaterialTheme.colorScheme.surfaceVariant
         val actionWindowIcon = MaterialTheme.colorScheme.onSurfaceVariant
+        val mutedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+        val dividerColor = MaterialTheme.colorScheme.outlineVariant
         // 字号与行高沿用旧编辑框: 14sp 正文 / 22sp 行高
         val density = LocalDensity.current
         val textSizePx = with(density) { 14.sp.toPx() }
         val lineHeightPx = with(density) { 22.sp.toPx() }
+        // 行号左侧留白, 紧贴编辑区边缘
+        val lineNumberMarginLeftPx = with(density) { 8.dp.toPx() }
 
         Scaffold(
             modifier = Modifier
@@ -291,10 +393,14 @@ fun TextEditorDialog(
                     subtitle = subtitle,
                     subtitleError = subtitleError,
                     readOnly = readOnly,
+                    wordWrap = wordWrap,
+                    lineNumberPinned = lineNumberPinned,
                     canSave = dirty && !saving,
                     canUndo = canUndo,
                     canRedo = canRedo,
                     onClose = ::requestClose,
+                    onToggleWordWrap = ::toggleWordWrap,
+                    onToggleLineNumberPin = ::toggleLineNumberPin,
                     onUndo = ::undo,
                     onRedo = ::redo,
                     onSave = ::save
@@ -303,15 +409,17 @@ fun TextEditorDialog(
             bottomBar = {
                 if (document != null) {
                     Column {
-                        // 额外按键栏: 常用符号快捷输入 (只读时无意义, 不显示)
-                        if (!readOnly) {
+                        // 额外按键栏: 常用符号快捷输入 (只读时无意义, 不显示; 可收起)
+                        if (!readOnly && keysExpanded) {
                             EditorExtraKeysBar(onKey = ::insertExtraKey)
                         }
                         // 统计值通过 lambda 延迟到状态栏内读取: 数值更新只重组状态栏
                         EditorStatusBar(
                             encoding = encoding,
                             lineEnding = lineEnding,
-                            stats = { stats }
+                            stats = { stats },
+                            keysExpanded = if (readOnly) null else keysExpanded,
+                            onToggleKeys = { keysExpanded = !keysExpanded }
                         )
                     }
                 }
@@ -333,13 +441,17 @@ fun TextEditorDialog(
                         factory = { context ->
                             CodeEditor(context).apply {
                                 holder.editor = this
-                                // 纯文本编辑: 等宽字体, 关闭行号/当前行高亮/滚动条/括号匹配
+                                // 纯文本编辑: 等宽字体, 行号常显且横向滚动时固定, 关闭当前行高亮/滚动条/括号匹配
                                 setTypefaceText(Typeface.MONOSPACE)
-                                setLineNumberEnabled(false)
+                                setTypefaceLineNumber(Typeface.MONOSPACE)
+                                setLineNumberEnabled(true)
+                                // 关闭换行后内容可横向滚动, 行号槽默认不跟随滚动 (菜单可切换)
+                                setPinLineNumber(lineNumberPinned)
+                                setLineNumberMarginLeft(lineNumberMarginLeftPx)
                                 setHighlightCurrentLine(false)
                                 setHighlightBracketPair(false)
                                 setScrollBarEnabled(false)
-                                setWordwrap(true)
+                                setWordwrap(wordWrap)
                                 setTabWidth(4)
                                 props.autoIndent = false
                                 props.symbolPairAutoCompletion = false
@@ -355,6 +467,8 @@ fun TextEditorDialog(
                                 applyPlainTextColors(
                                     backgroundColor = backgroundColor.toArgb(),
                                     textColor = textColor.toArgb(),
+                                    mutedTextColor = mutedTextColor.toArgb(),
+                                    dividerColor = dividerColor.toArgb(),
                                     selectionColor = selectionColor.toArgb(),
                                     cursorColor = cursorColor.toArgb(),
                                     actionWindowBackground = actionWindowBackground.toArgb(),
@@ -372,23 +486,37 @@ fun TextEditorDialog(
                                 subscribeEvent(SelectionChangeEvent::class.java) { _, _ ->
                                     refreshEditorState(this@apply)
                                 }
+                                // 滚动位置变化: 同步右侧快速滚动条 (只有滚动条自身重组)
+                                subscribeEvent(ScrollEvent::class.java) { event, _ ->
+                                    val max = scrollMaxY
+                                    scrollState.scrollable = max > 0
+                                    scrollState.fraction = if (max > 0) {
+                                        (event.endY.toFloat() / max).coerceIn(0f, 1f)
+                                    } else {
+                                        0f
+                                    }
+                                }
                                 setText(session.savedText)
                                 setSelection(0, 0)
                                 // 挂载后同步一次统计与历史状态; 期间若已产生输入则不覆盖脏标记
                                 post {
                                     refreshEditorState(this@apply)
+                                    syncScrollBar(this@apply)
                                     if (!canUndo()) dirty = false
                                 }
                             }
                         },
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            // 行号槽自带左间距, 左侧只留少量空白
+                            .padding(start = 4.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
                         update = { editor ->
                             editor.setEditable(!readOnly)
                             editor.applyPlainTextColors(
                                 backgroundColor = backgroundColor.toArgb(),
                                 textColor = textColor.toArgb(),
+                                mutedTextColor = mutedTextColor.toArgb(),
+                                dividerColor = dividerColor.toArgb(),
                                 selectionColor = selectionColor.toArgb(),
                                 cursorColor = cursorColor.toArgb(),
                                 actionWindowBackground = actionWindowBackground.toArgb(),
@@ -420,6 +548,16 @@ fun TextEditorDialog(
                         icon = Icons.Filled.ErrorOutline,
                         message = stringResource(R.string.text_editor_load_failed),
                         onOpenWith = onOpenWith
+                    )
+                }
+                // 快速滚动条: 盖在编辑区右边缘 (编辑器右侧内边距内), 内容不足一屏时自行隐藏
+                if (document != null) {
+                    EditorFastScrollBar(
+                        scrollState = scrollState,
+                        onSeek = ::seekTo,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
                     )
                 }
             }
@@ -455,10 +593,12 @@ fun TextEditorDialog(
     }
 }
 
-/** 同步编辑器配色到当前 Material 主题: 纯文本编辑只需背景/正文/选区/光标/文本操作浮窗 */
+/** 同步编辑器配色到当前 Material 主题: 背景/正文/行号/选区/光标/文本操作浮窗 */
 private fun CodeEditor.applyPlainTextColors(
     backgroundColor: Int,
     textColor: Int,
+    mutedTextColor: Int,
+    dividerColor: Int,
     selectionColor: Int,
     cursorColor: Int,
     actionWindowBackground: Int,
@@ -468,6 +608,13 @@ private fun CodeEditor.applyPlainTextColors(
     colorScheme.apply {
         setColor(EditorColorScheme.WHOLE_BACKGROUND, backgroundColor)
         setColor(EditorColorScheme.TEXT_NORMAL, textColor)
+        // 行号与行号槽: 次要文字色 + 与编辑区同底的背景
+        setColor(EditorColorScheme.LINE_NUMBER, mutedTextColor)
+        setColor(EditorColorScheme.LINE_NUMBER_CURRENT, textColor)
+        setColor(EditorColorScheme.LINE_NUMBER_BACKGROUND, backgroundColor)
+        setColor(EditorColorScheme.LINE_DIVIDER, dividerColor)
+        setColor(EditorColorScheme.LINE_NUMBER_PANEL, actionWindowBackground)
+        setColor(EditorColorScheme.LINE_NUMBER_PANEL_TEXT, mutedTextColor)
         setColor(EditorColorScheme.SELECTED_TEXT_BACKGROUND, selectionColor)
         setColor(EditorColorScheme.SELECTION_INSERT, cursorColor)
         setColor(EditorColorScheme.SELECTION_HANDLE, cursorColor)
@@ -476,21 +623,26 @@ private fun CodeEditor.applyPlainTextColors(
     }
 }
 
-/** 顶栏: 关闭 + 文件名/状态 + 撤销/重做 + 保存 (与主界面 TopAppBar 同为 surface 底色) */
+/** 顶栏: 关闭 + 文件名/状态 + 更多菜单 (保存/撤销/重做/自动换行/行号列固定), 与主界面 TopAppBar 同为 surface 底色 */
 @Composable
 private fun EditorTopBar(
     title: String,
     subtitle: String,
     subtitleError: Boolean,
     readOnly: Boolean,
+    wordWrap: Boolean,
+    lineNumberPinned: Boolean,
     canSave: Boolean,
     canUndo: Boolean,
     canRedo: Boolean,
     onClose: () -> Unit,
+    onToggleWordWrap: () -> Unit,
+    onToggleLineNumberPin: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onSave: () -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             Row(
@@ -537,23 +689,109 @@ private fun EditorTopBar(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                IconButton(onClick = onUndo, enabled = canUndo) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = stringResource(R.string.text_editor_undo)
-                    )
-                }
-                IconButton(onClick = onRedo, enabled = canRedo) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Redo,
-                        contentDescription = stringResource(R.string.text_editor_redo)
-                    )
-                }
-                if (!readOnly) {
-                    TextButton(onClick = onSave, enabled = canSave) {
-                        Text(
-                            text = stringResource(R.string.text_editor_save),
-                            fontWeight = FontWeight.Medium
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = stringResource(R.string.more)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        // 保存: 菜单第一项, 只读文件没有保存入口
+                        if (!readOnly) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.text_editor_save)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Save,
+                                        contentDescription = null
+                                    )
+                                },
+                                enabled = canSave,
+                                onClick = {
+                                    menuExpanded = false
+                                    onSave()
+                                }
+                            )
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.text_editor_undo)) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                                    contentDescription = null
+                                )
+                            },
+                            enabled = canUndo,
+                            onClick = {
+                                menuExpanded = false
+                                onUndo()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.text_editor_redo)) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Redo,
+                                    contentDescription = null
+                                )
+                            },
+                            enabled = canRedo,
+                            onClick = {
+                                menuExpanded = false
+                                onRedo()
+                            }
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(
+                                        if (wordWrap) {
+                                            R.string.text_editor_word_wrap_on
+                                        } else {
+                                            R.string.text_editor_word_wrap_off
+                                        }
+                                    )
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.WrapText,
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onToggleWordWrap()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(
+                                        if (lineNumberPinned) {
+                                            R.string.text_editor_line_number_pin_on
+                                        } else {
+                                            R.string.text_editor_line_number_pin_off
+                                        }
+                                    )
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.PushPin,
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onToggleLineNumberPin()
+                            }
                         )
                     }
                 }
@@ -563,12 +801,14 @@ private fun EditorTopBar(
     }
 }
 
-/** 底栏: 编码 · 换行风格 | 光标位置 | 行数与字符数 */
+/** 底栏: 符号栏开关 · 编码 · 换行风格 | 光标位置 | 行数与字符数 */
 @Composable
 private fun EditorStatusBar(
     encoding: TextEncoding,
     lineEnding: LineEnding,
-    stats: () -> EditorStats
+    stats: () -> EditorStats,
+    keysExpanded: Boolean?,
+    onToggleKeys: () -> Unit
 ) {
     val current = stats()
     Surface(color = MaterialTheme.colorScheme.surface) {
@@ -577,10 +817,43 @@ private fun EditorStatusBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    // 键盘弹出时导航栏已被 IME 覆盖: 排除这段 inset, 避免底栏与键盘之间多出一条空白
+                    .windowInsetsPadding(
+                        WindowInsets.navigationBars
+                            .exclude(WindowInsets.ime)
+                            .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 符号栏收起后, 这里保留展开入口
+                if (keysExpanded != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable(onClick = onToggleKeys),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (keysExpanded) {
+                                Icons.Filled.KeyboardArrowDown
+                            } else {
+                                Icons.Filled.KeyboardArrowUp
+                            },
+                            contentDescription = stringResource(
+                                if (keysExpanded) {
+                                    R.string.text_editor_keys_collapse
+                                } else {
+                                    R.string.text_editor_keys_expand
+                                }
+                            ),
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
                 Text(
                     text = "${encoding.label} · ${lineEnding.name}",
                     style = MaterialTheme.typography.labelSmall,
@@ -614,64 +887,115 @@ private fun EditorStatusBar(
     }
 }
 
+/**
+ * 右侧快速滚动条: 内容超过一屏时显示, 拖动拇指按比例跳转
+ *
+ * 只占用编辑区右边缘的窄条 (编辑器内边距内), 不影响正文点按;
+ * 拖动时拇指加粗提亮, 松手恢复。
+ */
+@Composable
+private fun EditorFastScrollBar(
+    scrollState: EditorScrollState,
+    onSeek: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (!scrollState.scrollable) return
+    val density = LocalDensity.current
+    val thumbHeight = 44.dp
+    val thumbHeightPx = with(density) { thumbHeight.toPx() }
+    var trackHeightPx by remember { mutableStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
+    val travel = (trackHeightPx - thumbHeightPx).coerceAtLeast(0f)
+
+    Box(
+        modifier = modifier
+            .width(16.dp)
+            .onSizeChanged { trackHeightPx = it.height.toFloat() }
+            .pointerInput(trackHeightPx, thumbHeightPx) {
+                if (trackHeightPx <= thumbHeightPx) return@pointerInput
+                fun seekAt(y: Float) {
+                    val fraction = ((y - thumbHeightPx / 2f) / travel).coerceIn(0f, 1f)
+                    onSeek(fraction)
+                }
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        dragging = true
+                        seekAt(offset.y)
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        seekAt(change.position.y)
+                    },
+                    onDragEnd = { dragging = false },
+                    onDragCancel = { dragging = false }
+                )
+            },
+        contentAlignment = Alignment.TopCenter
+    ) {
+        // 位置在布局阶段读取 fraction: 滚动时不触发重组, 只重新摆放
+        Box(
+            modifier = Modifier
+                .offset {
+                    IntOffset(x = 0, y = (travel * scrollState.fraction).roundToInt())
+                }
+                .width(if (dragging) 6.dp else 4.dp)
+                .height(thumbHeight)
+                .clip(RoundedCornerShape(3.dp))
+                .background(
+                    MaterialTheme.colorScheme.primary.copy(alpha = if (dragging) 0.7f else 0.45f)
+                )
+        )
+    }
+}
+
 /** 额外按键栏 Tab 键的标签 (实际插入制表符) */
 private const val EXTRA_KEY_TAB = "Tab"
 
 /**
- * 额外按键栏: 常用符号快捷输入
+ * 额外按键栏的全部按键: 高频符号 + Tab
  *
- * 布局思路对齐 Termux 的 extra-keys (等宽小格子、按屏宽平分),
- * 只保留文本/代码编辑里高频的符号 —— 全部加满会挤窄按键, 反而不便点按。
+ * 原先分两行平铺, 键盘弹出后底栏过高挤占编辑区;
+ * 改为单行横向滑动, 按键保持固定宽度, 不随屏宽拉伸。
  */
-private val EXTRA_KEY_ROWS = listOf(
-    listOf(EXTRA_KEY_TAB, "(", ")", "[", "]", "{", "}", "<", ">", "\"", "'"),
-    listOf("_", "#", "$", "&", "*", "+", "-", "=", "/", "\\", "|")
+private val EXTRA_KEYS = listOf(
+    EXTRA_KEY_TAB, "(", ")", "[", "]", "{", "}", "<", ">", "\"", "'",
+    "_", "#", "$", "&", "*", "+", "-", "=", "/", "\\", "|"
 )
 
-/** 额外按键栏: 两行常用符号, 紧贴状态栏上方 */
+/** 额外按键栏: 单行常用符号, 可横向滑动 */
 @Composable
 private fun EditorExtraKeysBar(onKey: (String) -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                EXTRA_KEY_ROWS.forEach { rowKeys ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        rowKeys.forEach { key ->
-                            ExtraKeyButton(
-                                label = key,
-                                modifier = Modifier.weight(1f),
-                                onClick = { onKey(key) }
-                            )
-                        }
-                    }
+                EXTRA_KEYS.forEach { key ->
+                    ExtraKeyButton(label = key, onClick = { onKey(key) })
                 }
             }
         }
     }
 }
 
-/** 单个符号键: 等宽字体居中, 底色与状态栏区分但保持同色系 */
+/** 单个符号键: 等宽字体居中, 固定小格子 (Tab 稍宽) */
 @Composable
 private fun ExtraKeyButton(
     label: String,
-    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Box(
-        modifier = modifier
+        modifier = Modifier
+            .width(if (label == EXTRA_KEY_TAB) 44.dp else 36.dp)
+            .height(30.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick)
-            .height(34.dp),
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
