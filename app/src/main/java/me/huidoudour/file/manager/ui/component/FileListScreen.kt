@@ -29,6 +29,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -52,6 +53,8 @@ import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.BookmarkRemove
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -59,10 +62,20 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -136,6 +149,24 @@ import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+/** 顶栏弹出菜单的统一 MD3 外观：圆角容器 + 轻微色调与投影 */
+@Composable
+private fun StyledDropdownMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        shape = RoundedCornerShape(20.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 2.dp,
+        shadowElevation = 6.dp,
+        content = content
+    )
+}
 
 /**
  * 文件管理器主界面 — MaterialFiles 风格
@@ -1123,7 +1154,7 @@ private fun NormalTopBar(
                             contentDescription = stringResource(R.string.sort_by)
                         )
                     }
-                    DropdownMenu(
+                    StyledDropdownMenu(
                         expanded = showSortMenu,
                         onDismissRequest = { showSortMenu = false }
                     ) {
@@ -1144,7 +1175,10 @@ private fun NormalTopBar(
                                 }
                             )
                         }
-                        HorizontalDivider()
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.sort_ascending)) },
                             trailingIcon = {
@@ -1184,12 +1218,15 @@ private fun NormalTopBar(
                             contentDescription = stringResource(R.string.more)
                         )
                     }
-                    DropdownMenu(
+                    StyledDropdownMenu(
                         expanded = showMoreMenu,
                         onDismissRequest = { showMoreMenu = false }
                     ) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.nav_up)) },
+                            leadingIcon = {
+                                Icon(Icons.Filled.ArrowUpward, contentDescription = null)
+                            },
                             enabled = canNavigateUp,
                             onClick = {
                                 onNavigateUp()
@@ -1198,6 +1235,9 @@ private fun NormalTopBar(
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.navigate_to)) },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Navigation, contentDescription = null)
+                            },
                             onClick = {
                                 onNavigateTo()
                                 showMoreMenu = false
@@ -1205,6 +1245,9 @@ private fun NormalTopBar(
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.refresh)) },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Refresh, contentDescription = null)
+                            },
                             onClick = {
                                 onRefreshClick()
                                 showMoreMenu = false
@@ -1212,14 +1255,23 @@ private fun NormalTopBar(
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.select_all)) },
+                            leadingIcon = {
+                                Icon(Icons.Filled.SelectAll, contentDescription = null)
+                            },
                             onClick = {
                                 onSelectAll()
                                 showMoreMenu = false
                             }
                         )
-                        HorizontalDivider()
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.copy_path)) },
+                            leadingIcon = {
+                                Icon(Icons.Filled.ContentCopy, contentDescription = null)
+                            },
                             onClick = {
                                 onCopyPath()
                                 showMoreMenu = false
@@ -1234,14 +1286,39 @@ private fun NormalTopBar(
                                     )
                                 )
                             },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = if (isBookmarked) {
+                                        Icons.Filled.BookmarkRemove
+                                    } else {
+                                        Icons.Filled.BookmarkAdd
+                                    },
+                                    contentDescription = null
+                                )
+                            },
                             onClick = {
                                 onToggleBookmark()
                                 showMoreMenu = false
                             }
                         )
-                        HorizontalDivider()
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.exit_app)) },
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.exit_app),
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.PowerSettingsNew,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            },
                             onClick = {
                                 onExitApp()
                                 showMoreMenu = false
@@ -1363,12 +1440,15 @@ private fun SelectionTopBar(
                         contentDescription = stringResource(R.string.more)
                     )
                 }
-                DropdownMenu(
+                StyledDropdownMenu(
                     expanded = showMoreMenu,
                     onDismissRequest = { showMoreMenu = false }
                 ) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_share)) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Share, contentDescription = null)
+                        },
                         enabled = count > 0,
                         onClick = {
                             onShare()
@@ -1377,6 +1457,9 @@ private fun SelectionTopBar(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_rename)) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Edit, contentDescription = null)
+                        },
                         enabled = singleSelection,
                         onClick = {
                             onRename()
@@ -1385,6 +1468,9 @@ private fun SelectionTopBar(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_properties)) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Info, contentDescription = null)
+                        },
                         enabled = singleSelection,
                         onClick = {
                             onProperties()
@@ -1401,6 +1487,16 @@ private fun SelectionTopBar(
                                     )
                                 )
                             },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = if (isFavorite) {
+                                        Icons.Filled.Star
+                                    } else {
+                                        Icons.Filled.StarBorder
+                                    },
+                                    contentDescription = null
+                                )
+                            },
                             enabled = singleSelection,
                             onClick = {
                                 onToggleFavorite()
@@ -1408,7 +1504,10 @@ private fun SelectionTopBar(
                             }
                         )
                     }
-                    HorizontalDivider()
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
                     DropdownMenuItem(
                         text = {
                             Text(
@@ -1416,6 +1515,9 @@ private fun SelectionTopBar(
                                     if (allSelected) R.string.select_none else R.string.select_all
                                 )
                             )
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Filled.SelectAll, contentDescription = null)
                         },
                         enabled = totalCount > 0,
                         onClick = {
@@ -1425,6 +1527,9 @@ private fun SelectionTopBar(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.invert_selection)) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.SwapHoriz, contentDescription = null)
+                        },
                         enabled = totalCount > 0,
                         onClick = {
                             onInvertSelection()
