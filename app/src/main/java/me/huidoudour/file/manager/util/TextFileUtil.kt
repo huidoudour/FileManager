@@ -3,7 +3,8 @@ package me.huidoudour.file.manager.util
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.nio.ByteBuffer
+import java.io.InputStreamReader
+import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 
@@ -16,7 +17,19 @@ enum class LineEnding(val value: String) {
     /** 统一为 LF 供编辑框使用; 保存时再按本风格还原 */
     fun normalize(text: String): String = when (this) {
         LF -> text
-        CRLF, CR -> text.replace("\r\n", "\n").replace('\r', '\n')
+        // 单次遍历完成转换: 大文件时避免 replace 链产生多份全文副本
+        CRLF, CR -> buildString(text.length) {
+            var index = 0
+            while (index < text.length) {
+                if (text[index] == '\r') {
+                    append('\n')
+                    index += if (text.getOrNull(index + 1) == '\n') 2 else 1
+                } else {
+                    append(text[index])
+                    index++
+                }
+            }
+        }
     }
 
     companion object {
@@ -88,41 +101,51 @@ sealed interface TextLoadResult {
 /**
  * 纯文本读写 — 内置文本编辑器使用的编码与换行探测
  *
- * - 读取: 优先按 BOM 识别 UTF-8 / UTF-16, 无 BOM 时严格 UTF-8 解码, 失败回退 GBK
+ * - 读取: 先探测文件头判断 BOM 与二进制, 再按编码流式解码 (不把整份文件读成字节数组),
+ *   无 BOM 时严格 UTF-8 解码, 失败回退 GBK; 换行统一为 LF, 原始风格另行记录
  * - 保存: 沿用读取时的编码与换行风格, BOM 原样写回, 其他应用打开时的显示效果不变
  */
 object TextFileUtil {
-    /** 超过该大小的文件不进入内置编辑器 (避免一次性载入过大文本占用内存) */
-    const val MAX_EDITABLE_BYTES = 1L * 1024 * 1024
+    /**
+     * 超过该大小的文件不进入内置编辑器。
+     *
+     * 编辑器渲染是逐行虚拟化的, 但载入时仍需把全文解码进内存 (编辑与撤销都要用),
+     * 峰值约为文件大小的 3~4 倍, 故上限取 10MB, 常见的日志/源码/配置都能直接编辑。
+     */
+    const val MAX_EDITABLE_BYTES = 10L * 1024 * 1024
 
     /** 二进制检测只看文件开头, 避免大文件全量扫描 */
     private const val BINARY_PROBE_BYTES = 8 * 1024
+
+    /** 流式解码的分块字符数 */
+    private const val DECODE_BUFFER_CHARS = 64 * 1024
+
+    /** 解码结果: 文本内容 + 实际采用的编码 */
+    private class Decoded(val content: String, val encoding: TextEncoding)
 
     /** 读取文本; 不抛异常, 结果由 [TextLoadResult] 表达 */
     suspend fun load(file: File): TextLoadResult = withContext(Dispatchers.IO) {
         if (!file.isFile) return@withContext TextLoadResult.Failure(null)
         if (file.length() > MAX_EDITABLE_BYTES) return@withContext TextLoadResult.TooLarge
         try {
-            val bytes = file.readBytes()
-            val bomEncoding = TextEncoding.fromBom(bytes)
-            if (bomEncoding == null && looksBinary(bytes)) {
+            val head = readHead(file, BINARY_PROBE_BYTES)
+            val bomEncoding = TextEncoding.fromBom(head)
+            if (bomEncoding == null && looksBinary(head)) {
                 return@withContext TextLoadResult.Binary
             }
-            val body = if (bomEncoding == null) {
-                bytes
+            val decoded = if (bomEncoding != null) {
+                Decoded(
+                    content = decode(file, bomEncoding.charset, bomEncoding.bom.size),
+                    encoding = bomEncoding
+                )
             } else {
-                bytes.copyOfRange(bomEncoding.bom.size, bytes.size)
+                decodeWithoutBom(file)
             }
-            val (encoding, content) = if (bomEncoding != null) {
-                bomEncoding to String(body, bomEncoding.charset)
-            } else {
-                decodeWithoutBom(body)
-            }
-            val lineEnding = LineEnding.detect(content)
+            val lineEnding = LineEnding.detect(decoded.content)
             TextLoadResult.Success(
                 TextDocument(
-                    content = lineEnding.normalize(content),
-                    encoding = encoding,
+                    content = lineEnding.normalize(decoded.content),
+                    encoding = decoded.encoding,
                     lineEnding = lineEnding
                 )
             )
@@ -150,20 +173,69 @@ object TextFileUtil {
     }
 
     /** 无 BOM: 严格 UTF-8 解码失败时回退 GBK (兼容常见中文文本) */
-    private fun decodeWithoutBom(bytes: ByteArray): Pair<TextEncoding, String> {
-        val utf8 = runCatching {
-            Charsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(bytes))
-                .toString()
-        }.getOrNull()
+    private fun decodeWithoutBom(file: File): Decoded {
+        val utf8 = try {
+            decode(file, Charsets.UTF_8, strict = true)
+        } catch (e: CharacterCodingException) {
+            null
+        }
         return if (utf8 != null) {
-            TextEncoding.UTF8 to utf8
+            Decoded(utf8, TextEncoding.UTF8)
         } else {
-            TextEncoding.GBK to String(bytes, TextEncoding.GBK.charset)
+            Decoded(decode(file, TextEncoding.GBK.charset), TextEncoding.GBK)
         }
     }
+
+    /**
+     * 按编码流式解码整个文件, 分块读取, 不额外持有整份文件的字节数组。
+     *
+     * [strict] 为 true 时遇到非法字节直接抛 [CharacterCodingException], 由调用方换编码重试。
+     */
+    private fun decode(
+        file: File,
+        charset: Charset,
+        skipBytes: Int = 0,
+        strict: Boolean = false
+    ): String {
+        file.inputStream().buffered().use { input ->
+            var skipped = 0
+            while (skipped < skipBytes) {
+                val count = input.skip((skipBytes - skipped).toLong())
+                if (count <= 0) break
+                skipped += count.toInt()
+            }
+            val decoder = charset.newDecoder().apply {
+                if (strict) {
+                    onMalformedInput(CodingErrorAction.REPORT)
+                    onUnmappableCharacter(CodingErrorAction.REPORT)
+                }
+            }
+            InputStreamReader(input, decoder).use { reader ->
+                // 预分配取较小值: UTF-16/GBK 的字符数远少于字节数, 避免一次性预留过大
+                val content = StringBuilder(minOf(file.length(), 1L shl 20).toInt())
+                val buffer = CharArray(DECODE_BUFFER_CHARS)
+                while (true) {
+                    val count = reader.read(buffer)
+                    if (count <= 0) break
+                    content.append(buffer, 0, count)
+                }
+                return content.toString()
+            }
+        }
+    }
+
+    /** 读取文件开头若干字节, 用于 BOM 与二进制探测 */
+    private fun readHead(file: File, limit: Int): ByteArray =
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(limit)
+            var read = 0
+            while (read < limit) {
+                val count = input.read(buffer, read, limit - read)
+                if (count <= 0) break
+                read += count
+            }
+            if (read == limit) buffer else buffer.copyOf(read)
+        }
 
     /** 开头出现 NUL 字节即视为二进制 (纯文本文件不会包含) */
     private fun looksBinary(bytes: ByteArray): Boolean {
