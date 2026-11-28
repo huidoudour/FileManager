@@ -30,6 +30,9 @@ object CrashLogStore {
     /** xCrash 日志目录名，位于应用私有 files 目录下 */
     const val XCRASH_LOG_DIR_NAME = "xcrash"
 
+    /** 导出目录名，位于外部私有目录 Android/data/<包名>/data 下 */
+    const val EXPORT_DIR_NAME = "data"
+
     private const val PREFS_NAME = "file_manager_prefs"
     private const val KEY_LAST_SHOWN_REPORT = "crash_last_shown_report"
 
@@ -166,6 +169,42 @@ object CrashLogStore {
                 Toast.LENGTH_SHORT
             ).show()
         }
+    }
+
+    /**
+     * 导出崩溃报告为 `.log` 文件。
+     *
+     * 保存到 `Android/data/<包名>/data/`，文件名取自崩溃捕获时间
+     * （如 `2026-11-28_19-43-43.log`），重名时追加序号。
+     *
+     * @return 导出成功的文件；失败时返回 null
+     */
+    fun export(context: Context, log: CrashLog): File? = runCatching {
+        val dir = exportDir(context)
+        if (!dir.exists() && !dir.mkdirs()) return null
+        val file = uniqueExportFile(dir, log)
+        file.writeText(buildShareText(log))
+        file
+    }.getOrNull()
+
+    private fun exportDir(context: Context): File {
+        val external = context.getExternalFilesDir(null)?.parentFile
+        return if (external != null) {
+            File(external, EXPORT_DIR_NAME)
+        } else {
+            File(context.filesDir, EXPORT_DIR_NAME)
+        }
+    }
+
+    private fun uniqueExportFile(dir: File, log: CrashLog): File {
+        val base = log.crashTime.replace(' ', '_').replace(':', '-')
+        var file = File(dir, "$base.log")
+        var index = 1
+        while (file.exists()) {
+            file = File(dir, "${base}_$index.log")
+            index++
+        }
+        return file
     }
 
     private fun buildShareText(log: CrashLog): String = buildString {

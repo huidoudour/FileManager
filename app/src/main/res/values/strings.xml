@@ -229,6 +229,7 @@
     <string name="keystore_generate">生成密钥</string>
     <string name="keystore_generate_desc">在应用内生成新的自签名密钥库</string>
     <string name="keystore_builtin_name">内置测试密钥 (testkey)</string>
+    <string name="keystore_builtin_badge">内置</string>
     <string name="keystore_detail">%1$s · %2$s · %3$s</string>
     <string name="keystore_storage_tip">密钥库保存在应用私有目录，其他应用无法读取。</string>
     <string name="keystore_empty">还没有可用密钥</string>
@@ -348,7 +349,7 @@
     <string name="crash_logs_title">崩溃日志</string>
     <string name="crash_dialog_title">应用已崩溃</string>
     <string name="crash_detail_title">崩溃详情</string>
-    <string name="crash_dialog_message">应用上次运行时发生了异常，崩溃信息已保存。你可以分享或删除这条记录。</string>
+    <string name="crash_dialog_message">应用上次运行时发生了异常，崩溃信息已保存。你可以导出或删除这条记录。</string>
     <string name="crash_none">暂无崩溃记录</string>
     <string name="crash_settings_desc_count">最近 %1$d 条崩溃记录</string>
     <string name="crash_info_time">时间</string>
@@ -362,4 +363,7 @@
     <string name="crash_share_subject">File Manager 崩溃报告</string>
     <string name="crash_share_chooser">分享崩溃报告</string>
     <string name="crash_share_failed">分享失败: %1$s</string>
+    <string name="crash_export">导出</string>
+    <string name="crash_export_success">已导出到 %1$s</string>
+    <string name="crash_export_failed">导出失败</string>
 </resources>

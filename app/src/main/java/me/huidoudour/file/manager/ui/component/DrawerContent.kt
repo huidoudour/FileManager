@@ -3,10 +3,9 @@ package me.huidoudour.file.manager.ui.component
 import android.os.Environment
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,12 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
@@ -50,7 +51,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.huidoudour.file.manager.R
@@ -59,7 +59,7 @@ import me.huidoudour.file.manager.viewmodel.FileManagerViewModel
 import java.io.File
 
 // =============================================================================
-//  侧边栏抽屉 (风格参考 Dtool: 渐变头部 + 分组标签 + 卡片式菜单项 + 底部版本信息)
+//  侧边栏抽屉 (MD3: 品牌渐变头部 + 分组标签 + 胶囊式导航项 + 底部版本胶囊)
 // =============================================================================
 
 data class QuickDir(
@@ -118,35 +118,51 @@ fun DrawerContent(
                 .width(280.dp)
                 .background(MaterialTheme.colorScheme.surface)
         ) {
-            // ---- 头部: 渐变背景 + 标题/副标题 ----
-            Column(
+            // ---- 头部: 品牌渐变 + 应用标识 ----
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        brush = Brush.verticalGradient(
+                        brush = Brush.linearGradient(
                             colors = listOf(
                                 MaterialTheme.colorScheme.primaryContainer,
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                                MaterialTheme.colorScheme.tertiaryContainer
                             )
                         )
                     )
-                    .padding(horizontal = 24.dp, vertical = 24.dp)
+                    .padding(horizontal = 24.dp, vertical = 28.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = stringResource(R.string.drawer_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.drawer_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.10f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = stringResource(R.string.drawer_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(R.string.drawer_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                    )
+                }
             }
-
-            DrawerDivider()
 
             // ---- 列表区 (可滚动, 头部与底部版本信息固定) ----
             Column(
@@ -222,19 +238,22 @@ fun DrawerContent(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // ---- Footer: 底部版本信息 (照搬 Dtool 的 Column 结构) ----
+            // ---- Footer: 版本信息胶囊 ----
             DrawerDivider()
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = versionLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
                 )
             }
         }
@@ -242,24 +261,24 @@ fun DrawerContent(
 }
 
 /**
- * 抽屉分组标签 (labelSmall + SemiBold, 与菜单项左侧对齐)
+ * 抽屉分组标签 (与设置页分区标题保持一致)
  */
 @Composable
 private fun DrawerSectionLabel(@StringRes labelRes: Int) {
     Text(
         text = stringResource(labelRes),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp)
+        modifier = Modifier.padding(start = 28.dp, top = 12.dp, bottom = 4.dp)
     )
 }
 
 /**
- * 抽屉菜单项 (完全照搬 Dtool 的 DrawerMenuItem: 56dp 高, 12dp 圆角)
+ * 抽屉菜单项 (MD3 胶囊造型)
  *
- * - 选中: NavigationDrawerItem (primaryContainer 填充, onPrimaryContainer 内容)
- * - 未选中: 描边卡片 (细描边 + surfaceVariant 淡底, 无水波纹)
+ * - 选中: NavigationDrawerItem (secondaryContainer 胶囊 + 强调文字)
+ * - 未选中: 无描边的普通行, 仅保留水波纹反馈, 更贴合 MD3 导航抽屉
  * - iconTint / titleColor / enabled 保留给收藏项等定制场景使用
  */
 @Composable
@@ -286,7 +305,7 @@ private fun DrawerItem(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -296,39 +315,24 @@ private fun DrawerItem(
             modifier = modifier
                 .padding(horizontal = 12.dp, vertical = 2.dp)
                 .fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(28.dp),
             colors = NavigationDrawerItemDefaults.colors(
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
                 selectedIconColor = if (iconTint == Color.Unspecified)
-                    MaterialTheme.colorScheme.onPrimaryContainer else iconTint,
+                    MaterialTheme.colorScheme.onSecondaryContainer else iconTint,
                 selectedTextColor = if (titleColor == Color.Unspecified)
-                    MaterialTheme.colorScheme.onPrimaryContainer else titleColor
+                    MaterialTheme.colorScheme.onSecondaryContainer else titleColor
             )
         )
     } else {
-        // 未选中状态 - 带边框和点击效果 (照搬 Dtool)
         Row(
             modifier = modifier
-                .padding(horizontal = 12.dp, vertical = 2.dp)
+                .padding(horizontal = 12.dp, vertical = 1.dp)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                .clickable(
-                    enabled = enabled,
-                    onClick = onClick,
-                    interactionSource = remember { MutableInteractionSource() }
-                )
-                // 与选中态 NavigationDrawerItem 的 56dp 最小高度保持一致, 避免点击切换时高度跳变
-                .heightIn(min = 56.dp)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .clip(RoundedCornerShape(28.dp))
+                .clickable(enabled = enabled, onClick = onClick)
+                .heightIn(min = 52.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -338,17 +342,16 @@ private fun DrawerItem(
                 modifier = Modifier.size(24.dp),
                 tint = when {
                     iconTint != Color.Unspecified -> iconTint
-                    !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
             )
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Normal,
                 color = when {
                     titleColor != Color.Unspecified -> titleColor
-                    !enabled -> MaterialTheme.colorScheme.onSurfaceVariant
+                    !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     else -> MaterialTheme.colorScheme.onSurface
                 },
                 maxLines = 1,
@@ -359,12 +362,12 @@ private fun DrawerItem(
 }
 
 /**
- * 抽屉分隔线 (outline 15% 透明度, 参考 Dtool)
+ * 抽屉分隔线 (使用 MD3 outlineVariant)
  */
 @Composable
 private fun DrawerDivider() {
     HorizontalDivider(
-        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+        color = MaterialTheme.colorScheme.outlineVariant,
         thickness = 1.dp
     )
 }

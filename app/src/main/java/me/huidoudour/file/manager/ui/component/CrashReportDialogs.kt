@@ -1,5 +1,7 @@
 package me.huidoudour.file.manager.ui.component
 
+import android.widget.Toast
+
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,10 +17,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -89,12 +94,22 @@ fun CrashReportDialog(
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = log.stackTrace,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                    )
+                ) {
+                    Text(
+                        text = log.stackTrace,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp)
+                    )
+                }
             }
         },
         confirmButton = {
@@ -102,8 +117,22 @@ fun CrashReportDialog(
                 TextButton(onClick = onDelete) {
                     Text(stringResource(R.string.action_delete))
                 }
-                TextButton(onClick = { CrashLogStore.share(context, log) }) {
-                    Text(stringResource(R.string.action_share))
+                TextButton(onClick = {
+                    val exported = CrashLogStore.export(context, log)
+                    Toast.makeText(
+                        context,
+                        if (exported != null) {
+                            context.getString(
+                                R.string.crash_export_success,
+                                exported.absolutePath
+                            )
+                        } else {
+                            context.getString(R.string.crash_export_failed)
+                        },
+                        Toast.LENGTH_LONG
+                    ).show()
+                }) {
+                    Text(stringResource(R.string.crash_export))
                 }
                 TextButton(onClick = onDismiss) {
                     Text(stringResource(R.string.close))
@@ -142,47 +171,56 @@ fun CrashLogListDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     items(logs, key = { it.file.absolutePath }) { log ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(log) }
-                                .padding(vertical = 10.dp)
-                        ) {
-                            Text(
-                                text = log.exceptionSummary.ifBlank {
-                                    context.getString(R.string.unknown_error)
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                             )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelect(log) }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                            ) {
                                 Text(
-                                    text = "${log.crashTime}  ${log.versionName}  ·  " +
-                                        crashSourceLabel(log.source),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 1,
+                                    text = log.exceptionSummary.ifBlank {
+                                        context.getString(R.string.unknown_error)
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                IconButton(
-                                    onClick = { onDelete(log) },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Delete,
-                                        contentDescription = stringResource(R.string.action_delete),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "${log.crashTime}  ${log.versionName}  ·  " +
+                                            crashSourceLabel(log.source),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
+                                    IconButton(
+                                        onClick = { onDelete(log) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Delete,
+                                            contentDescription = stringResource(R.string.action_delete),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
             }
