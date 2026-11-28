@@ -10,7 +10,7 @@ plugins {
 // ── Git 版本控制 ──
 val backVersionCode = 129
 val baseVersionCode = 11
-val baseVersionName = "26.11.06"
+val baseVersionName = "26.11.28"
 
 fun Project.gitCommitCount(): Int = try {
     providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
