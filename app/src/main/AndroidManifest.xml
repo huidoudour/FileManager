@@ -60,6 +60,7 @@
             android:label="@string/dis_name"
             android:theme="@style/Theme.FileManager"
             android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
