@@ -19,6 +19,7 @@ smartException = "0.2.1"
 media3 = "1.11.1"
 acra = "5.14.2"
 apksig = "9.5.3"
+soraEditor = "0.23.6"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -50,6 +51,7 @@ androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.re
 androidx-media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 acra-core = { group = "ch.acra", name = "acra-core", version.ref = "acra" }
 apksig = { group = "com.android.tools.build", name = "apksig", version.ref = "apksig" }
+sora-editor = { group = "io.github.Rosemoe.sora-editor", name = "editor", version.ref = "soraEditor" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

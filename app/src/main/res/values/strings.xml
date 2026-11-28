@@ -333,6 +333,12 @@
     <string name="text_editor_discard_confirm">放弃</string>
     <string name="text_editor_cursor">第 %1$d 行 第 %2$d 列</string>
     <string name="text_editor_stats">%1$d 行 · %2$d 字符</string>
+    <string name="text_editor_word_wrap_on">自动换行: 开</string>
+    <string name="text_editor_word_wrap_off">自动换行: 关</string>
+    <string name="text_editor_line_number_pin_on">行号列固定: 开</string>
+    <string name="text_editor_line_number_pin_off">行号列固定: 关</string>
+    <string name="text_editor_keys_collapse">收起符号栏</string>
+    <string name="text_editor_keys_expand">展开符号栏</string>
 
     <!-- 崩溃日志 (ACRA) -->
     <string name="settings_section_diagnostics">诊断</string>

@@ -1,7 +1,6 @@
 # FileManager
 
 一个使用 Kotlin + Jetpack Compose 编写的轻量级 Android 文件管理器
-> ~~此项目需要使用 Canary 频道的 Android Studio 来打开~~
 
 ## 功能
 
@@ -36,6 +35,7 @@
 - [MT 管理器](https://mt2.cn/) — UI 风格参考
 - [xCrash](https://github.com/iqiyi/xCrash) — 源码使用
 - [SQLite3](https://github.com/sqlite/sqlite) — 源码使用
+- [Sora Editor](https://github.com/Rosemoe/sora-editor) — 大文件文本编辑器（LGPL-2.1）
 
 > 若涉及到侵权，请联系我<br>
 > 本项目项目参考设计遵循上游项目的开源协议
